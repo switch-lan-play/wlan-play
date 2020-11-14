@@ -1,0 +1,2 @@
+[agent]
+url = "ssh://rpi/bash"

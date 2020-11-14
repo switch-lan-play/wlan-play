@@ -7,3 +7,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+toml = "0.5.7"
+thrussh = "0.30.1"
+rhai = "0.19.5"
+tokio = { version = "0.3", features = ["full"] }
+anyhow = "1.0"
+serde = "1.0"
+serde_derive = "1.0"
+url = { version = "2.2.0", features = ["serde"] }
+log = "0.4.11"
+env_logger = "0.8.1"
