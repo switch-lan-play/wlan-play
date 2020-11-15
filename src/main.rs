@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
 
     let config: Config = from_slice(&read("config.toml").await?)?;
 
-    let mut conn = connection::connect(&config.agent.url).await?;
+    let mut conn = connection::connect(config.agent.connection).await?;
 
     if let Some(script) = config.agent.after_connected {
         log::info!("after_connected is set, run script...");
@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
     }
     log::info!("Connection is ready");
 
-    let agent = agent::from_connection(conn).await?;
+    let _agent = agent::from_connection(config.agent.platform, conn).await?;
 
     Ok(())
 }

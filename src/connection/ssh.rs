@@ -1,29 +1,84 @@
 use anyhow::{anyhow, Result};
-use super::{Url, Connection, BoxConnection};
+use tokio::io::ReadBuf;
+use super::{Url, Connection, BoxConnection, traits::{AsyncRead, AsyncWrite}};
 use thrussh::{client, ChannelMsg};
 use thrussh_keys::key;
-use std::sync::Arc;
+use std::{sync::Arc, pin::Pin, task::{Context, Poll}, io};
+use futures::{Future, ready, pin_mut};
 
 pub struct SshConnection {
-    handle: client::Handle,
+    _handle: client::Handle,
     channel: client::Channel,
+    read_buf: Option<Vec<u8>>,
+}
+
+impl AsyncRead for SshConnection {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+        loop {
+            let t = self.read_buf.take();
+            self.read_buf = match t {
+                Some(mut b) => {
+                    let new_b = b.split_off(buf.remaining().min(b.len()));
+                    buf.put_slice(&b);
+                    self.read_buf = Some(new_b);
+                    return Poll::Ready(Ok(()))
+                },
+                None => {
+                    let fut = self.channel.wait();
+                    pin_mut!(fut);
+                    match ready!(fut.poll(cx)) {
+                        Some(ChannelMsg::Data{ data }) => {
+                            let mut dat = Vec::with_capacity(data.len());
+                            data.write_all_from(0, &mut dat).unwrap();
+                            Some(dat)
+                        }
+                        _ => return Poll::Ready(Err(io::ErrorKind::InvalidData.into()))
+                    }
+                },
+            }
+        }
+    }
+}
+
+impl AsyncWrite for SshConnection {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        let fut = self.channel.data(buf);
+        pin_mut!(fut);
+        let r = ready!(fut.poll(cx));
+        Poll::Ready(r
+            .map(|_| buf.len())
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        )
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
 }
 
 #[async_trait::async_trait]
 impl Connection for SshConnection {
-    async fn send(&mut self, data: &[u8]) -> Result<()> {
-        self.channel.data(data).await
-    }
-    async fn recv(&mut self) -> Option<Vec<u8>> {
-        match self.channel.wait().await {
-            Some(ChannelMsg::Data{ data }) => {
-                let mut dat = Vec::with_capacity(data.len());
-                data.write_all_from(0, &mut dat).unwrap();
-                Some(dat)
-            },
-            _ => None
-        }
-    }
+    // async fn send(&mut self, data: &[u8]) -> Result<()> {
+    //     self.channel.data(data).await
+    // }
+    // async fn recv(&mut self) -> Option<Vec<u8>> {
+    //     match self.channel.wait().await {
+    //         Some(ChannelMsg::Data{ data }) => {
+    //             let mut dat = Vec::with_capacity(data.len());
+    //             data.write_all_from(0, &mut dat).unwrap();
+    //             Some(dat)
+    //         },
+    //         _ => None
+    //     }
+    // }
 }
 
 struct Handler;
@@ -76,10 +131,9 @@ pub async fn connect(url: &Url) -> Result<BoxConnection> {
         }
     }
 
-    let mut conn = SshConnection {
-        handle,
+    Ok(Box::new(SshConnection {
+        _handle: handle,
         channel,
-    };
-
-    Ok(Box::new(conn))
+        read_buf: None,
+    }))
 }
