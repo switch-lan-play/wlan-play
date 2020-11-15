@@ -8,6 +8,7 @@ use connection::run_script;
 mod agent;
 mod config;
 mod connection;
+mod utils;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,13 +18,17 @@ async fn main() -> Result<()> {
 
     let mut conn = connection::connect(config.agent.connection).await?;
 
-    if let Some(script) = config.agent.after_connected {
+    if let Some(script) = &config.agent.after_connected {
         log::info!("after_connected is set, run script...");
-        conn = run_script(conn, script).await?;
+        conn = run_script(conn, script.clone()).await?;
     }
     log::info!("Connection is ready");
 
-    let _agent = agent::from_connection(config.agent.platform, conn).await?;
+    let mut agent = agent::from_connection(config.agent.platform, conn).await?;
+
+    let devices = agent.list_device().await?;
+
+    log::info!("devices: {:?}", devices);
 
     Ok(())
 }

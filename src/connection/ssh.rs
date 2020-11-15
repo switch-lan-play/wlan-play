@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use tokio::io::ReadBuf;
-use super::{Url, Connection, BoxConnection, traits::{AsyncRead, AsyncWrite}};
+use super::{Url, AsyncStream, AsyncRead, AsyncWrite, BoxAsyncStream};
 use thrussh::{client, ChannelMsg};
 use thrussh_keys::key;
 use std::{sync::Arc, pin::Pin, task::{Context, Poll}, io};
@@ -65,20 +65,7 @@ impl AsyncWrite for SshConnection {
 }
 
 #[async_trait::async_trait]
-impl Connection for SshConnection {
-    // async fn send(&mut self, data: &[u8]) -> Result<()> {
-    //     self.channel.data(data).await
-    // }
-    // async fn recv(&mut self) -> Option<Vec<u8>> {
-    //     match self.channel.wait().await {
-    //         Some(ChannelMsg::Data{ data }) => {
-    //             let mut dat = Vec::with_capacity(data.len());
-    //             data.write_all_from(0, &mut dat).unwrap();
-    //             Some(dat)
-    //         },
-    //         _ => None
-    //     }
-    // }
+impl AsyncStream for SshConnection {
 }
 
 struct Handler;
@@ -98,7 +85,7 @@ impl client::Handler for Handler {
     }
  }
 
-pub async fn connect(url: &Url) -> Result<BoxConnection> {
+pub async fn connect(url: &Url) -> Result<BoxAsyncStream> {
     assert_eq!(url.scheme(), "ssh");
 
     let config = client::Config::default();

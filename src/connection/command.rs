@@ -1,5 +1,5 @@
 use anyhow::Result;
-use super::{Connection, BoxConnection};
+use super::{AsyncStream, BoxAsyncStream};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use std::process::Stdio;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -39,16 +39,10 @@ impl AsyncWrite for CommandConnection {
 }
 
 #[async_trait::async_trait]
-impl Connection for CommandConnection {
-    // async fn send(&mut self, data: &[u8]) -> Result<()> {
-    //     todo!()
-    // }
-    // async fn recv(&mut self) -> Option<Vec<u8>> {
-    //     todo!()
-    // }
+impl AsyncStream for CommandConnection {
 }
 
-pub async fn connect((command, args): (&String, &[String])) -> Result<BoxConnection> {
+pub async fn connect((command, args): (&String, &[String])) -> Result<BoxAsyncStream> {
     let child = Command::new(command)
         .args(args)
         .kill_on_drop(true)
