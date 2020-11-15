@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use super::{Url, Connection};
+use super::{Url, Connection, BoxConnection};
 use thrussh::{client, ChannelMsg};
 use thrussh_keys::key;
 use std::sync::Arc;
@@ -43,7 +43,7 @@ impl client::Handler for Handler {
     }
  }
 
-pub async fn connect(url: &Url) -> Result<Box<dyn Connection>> {
+pub async fn connect(url: &Url) -> Result<BoxConnection> {
     assert_eq!(url.scheme(), "ssh");
 
     let config = client::Config::default();
@@ -80,10 +80,6 @@ pub async fn connect(url: &Url) -> Result<Box<dyn Connection>> {
         handle,
         channel,
     };
-
-    conn.send(&b"echo 123\n"[..]).await?;
-    let a = conn.recv().await;
-    log::info!("{:?}", std::str::from_utf8(&a.unwrap()));
 
     Ok(Box::new(conn))
 }
