@@ -1,9 +1,10 @@
-use std::{io::Write, pin::Pin, task::{Context, Poll}};
+use std::{io::{Write, Cursor}, pin::Pin, task::{Context, Poll}};
 use tokio::{io::{AsyncRead, AsyncReadExt, ReadBuf}, stream::Stream};
-use pcap_parser::{LegacyPcapReader, Linktype, PcapBlockOwned, PcapError, traits::PcapReaderIterator};
+use pcap_parser::{LegacyPcapBlock, LegacyPcapReader, Linktype, PcapBlockOwned, PcapError, traits::PcapReaderIterator};
 use futures::ready;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use ringbuf::{RingBuffer, Consumer, Producer};
+use byteorder::{LittleEndian, ReadBytesExt};
 
 pub struct Packet {
     pub data: Vec<u8>,
@@ -37,6 +38,30 @@ where
     }
 }
 
+fn convert_packet(datalink: Linktype, block: LegacyPcapBlock) -> Result<Packet> {
+    let mut data = block.data.to_vec();
+    Ok(match datalink.0 {
+        // LINKTYPE_IEEE802_11
+        105 => {
+            Packet {
+                data
+            }
+        }
+        // LINKTYPE_IEEE802_11_RADIOTAP
+        127 => {
+            let mut cursor = Cursor::new(&mut data);
+            if ReadBytesExt::read_u16::<LittleEndian>(&mut cursor)? != 0 {
+                Err(anyhow!("radiotap header is invalid"))?
+            }
+            let radiotap_len = ReadBytesExt::read_u16::<LittleEndian>(&mut cursor)?;
+            Packet {
+                data: data.split_off(radiotap_len as usize),
+            }
+        }
+        _ => Err(anyhow!("Unsupported data link {}", datalink))?
+    })
+}
+
 impl<R> Stream for PcapReader<R>
 where
     R: AsyncRead + Unpin,
@@ -49,6 +74,7 @@ where
     ) -> Poll<Option<Self::Item>> {
         loop {
             loop {
+                let datalink = self.datalink;
                 match self.capture.next() {
                     Ok((offset, block)) => {
                         let ret = match block {
@@ -58,15 +84,13 @@ where
                                 None
                             },
                             PcapBlockOwned::Legacy(packet) => {
-                                Some(Packet {
-                                    data: packet.data.to_vec(),
-                                })
+                                Some(convert_packet(datalink.ok_or(anyhow!("No header!"))?, packet))
                             },
                             PcapBlockOwned::NG(_) => unreachable!(),
                         };
                         self.capture.consume(offset);
                         if let Some(r) = ret {
-                            return Poll::Ready(Some(Ok(r)));
+                            return Poll::Ready(Some(Ok(r?)));
                         }
                     }
                     Err(PcapError::Incomplete) => {

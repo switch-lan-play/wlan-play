@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
     }).await?;
 
     while let Some(p) = stream.try_next().await? {
-        log::trace!("Packet {:x?}", &p.data[18..18+6]);
+        log::trace!("Packet {:x?}", &p.data[..]);
     }
 
     log::info!("devices: {:?}", devices);
