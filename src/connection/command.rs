@@ -48,10 +48,11 @@ pub async fn connect((command, args): (&String, &[String])) -> Result<BoxAsyncSt
         .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()?;
-    
-    Ok(Box::new(CommandConnection{
+    let conn = Box::new(CommandConnection{
         child,
-    }))
+    });
+
+    Ok(conn)
 }

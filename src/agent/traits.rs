@@ -9,7 +9,6 @@ pub use tokio::{
 pub enum DeviceType {
     Dev,
     Phy,
-    Priv,
 }
 
 #[derive(Debug)]
@@ -25,7 +24,14 @@ pub struct Packet {
 #[async_trait::async_trait]
 pub trait Executor {
     /// Execute command
-    async fn exec(&mut self, command: &[u8]) -> Result<Vec<u8>>;
+    async fn exec_bytes(&mut self, command: &[u8]) -> Result<Vec<u8>>;
+    /// Execute command string
+    async fn exec(&mut self, command: &str) -> Result<String>
+    where
+        Self: Sized
+    {
+        Ok(String::from_utf8(self.exec_bytes(command.as_bytes()).await?)?)
+    }
     /// For infinite output
     async fn exec_stream(&mut self, command: &[u8]) -> Result<Box<dyn AsyncRead>>;
 }

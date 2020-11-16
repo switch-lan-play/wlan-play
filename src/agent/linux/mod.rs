@@ -20,7 +20,7 @@ impl LinuxAgent {
         Ok(())
     }
     async fn command_match(&mut self, command: &str, re: &str) -> Result<String> {
-        let output = String::from_utf8(self.exec(command.as_bytes()).await?)?;
+        let output = self.exec(command).await?;
         if !Regex::new(re)?.is_match(&output) {
             log::debug!("cmd: {:?}\noutput: {:?}", command, output);
             Err(anyhow!("The output of command: {} is not matched with regex: {}", command, re))?;
@@ -31,7 +31,7 @@ impl LinuxAgent {
 
 #[async_trait::async_trait]
 impl Executor for LinuxAgent {
-    async fn exec(&mut self, command: &[u8]) -> Result<Vec<u8>> {
+    async fn exec_bytes(&mut self, command: &[u8]) -> Result<Vec<u8>> {
         self.0.write_all("echo '---start---'\n".as_bytes()).await?;
         self.0.write_all(command).await?;
         self.0.write_all("\necho '---end---'\n".as_bytes()).await?;
@@ -51,6 +51,7 @@ impl Executor for LinuxAgent {
 #[async_trait::async_trait]
 impl Agent for LinuxAgent {
     async fn check(&mut self) -> Result<()> {
+        log::trace!("check");
         let tcpdump_version = self.command_match(
             "tcpdump --version 2>&1",
             r"^tcpdump version .*\nlibpcap version .*\nOpenSSL .*\n$"
@@ -61,8 +62,9 @@ impl Agent for LinuxAgent {
     }
 
     async fn list_device(&mut self) -> Result<Vec<Device>> {
+        log::trace!("list_device");
         let re = Regex::new(r"Wiphy\s+(?P<phy>\w+)")?;
-        let s = String::from_utf8(self.exec("iw list".as_bytes()).await?)?;
+        let s = self.exec("iw list").await?;
         let mut out: Vec<Device> = vec![];
 
         for c in re.captures_iter(&s) {
@@ -72,13 +74,25 @@ impl Agent for LinuxAgent {
                 name,
             });
         }
+
+        let re = Regex::new(r"Interface\s+(?P<dev>\w+)")?;
+        let s = self.exec("iw dev").await?;
+        for c in re.captures_iter(&s) {
+            let name = c.name("dev").unwrap().as_str().to_string();
+            out.push(Device {
+                device_type: DeviceType::Dev,
+                name,
+            });
+        }
+
         Ok(out)
     }
 
     async fn capture_packets(&mut self, device: &Device) -> Result<Box<dyn Stream<Item=Packet>>> {
+        log::trace!("capture_packets");
         match device.device_type {
             DeviceType::Dev => {
-                let cmd = format!("tcpdump -i {}", device.name);
+                let cmd = format!("tcpdump --immediate-mode -l -w - -i {}", device.name);
                 log::info!("cmd {}", cmd);
                 // let stream = self.exec_stream(cmd.as_bytes()).await?;
             }
