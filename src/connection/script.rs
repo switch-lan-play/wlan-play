@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use anyhow::{anyhow, Result, Error};
 use super::Connection;
-use crate::utils::{TimeoutExt, DEFAULT_TIMEOUT};
+use crate::utils::timeout::{TimeoutExt, DEFAULT_TIMEOUT};
 use rhai::{Dynamic, Engine, EvalAltResult, RegisterFn, RegisterResultFn};
 use tokio::task;
 use futures::executor::block_on;

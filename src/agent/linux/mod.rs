@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use super::{Agent, Executor, BoxAgent, Connection, Stream, Packet, Device, DeviceType};
-use crate::utils::{TimeoutExt, DEFAULT_TIMEOUT};
+use crate::utils::{pcap_reader::PcapReader, timeout::{TimeoutExt, DEFAULT_TIMEOUT}};
 use tokio::prelude::*;
 use regex::Regex;
 
@@ -43,8 +43,16 @@ impl Executor for LinuxAgent {
         Ok(result)
     }
 
-    async fn exec_stream(&mut self, _command: &[u8]) -> Result<Box<dyn AsyncRead>> {
-        todo!()
+    async fn exec_stream<'a>(&'a mut self, command: &[u8]) -> Result<Box<dyn AsyncRead + Unpin + Send + 'a>> {
+        self.0.write_all("echo '---start---'\n".as_bytes()).await?;
+        self.0.flush().await?;
+        self.assert_line("---start---").await?;
+        self.0.write_all(command).await?;
+        self.0.write_all("\necho '---end---'\n".as_bytes()).await?;
+        self.0.flush().await?;
+
+        // TODO: stop at end
+        Ok(Box::new(&mut self.0))
     }
 }
 
@@ -88,18 +96,18 @@ impl Agent for LinuxAgent {
         Ok(out)
     }
 
-    async fn capture_packets(&mut self, device: &Device) -> Result<Box<dyn Stream<Item=Packet>>> {
+    async fn capture_packets<'a>(&'a mut self, device: &Device) -> Result<Box<dyn Stream<Item=Result<Packet>> + Unpin + Send + 'a>> {
         log::trace!("capture_packets");
         match device.device_type {
             DeviceType::Dev => {
                 let cmd = format!("tcpdump --immediate-mode -l -w - -i {}", device.name);
                 log::info!("cmd {}", cmd);
-                // let stream = self.exec_stream(cmd.as_bytes()).await?;
+                let stream = self.exec_stream(cmd.as_bytes()).await?;
+                let reader = PcapReader::new(stream).await?;
+                return Ok(Box::new(reader));
             }
             _ => todo!("Device type not supported {:?}", device.device_type)
         }
-  
-        todo!()
     }
 }
 

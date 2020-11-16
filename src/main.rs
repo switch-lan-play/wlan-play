@@ -5,6 +5,7 @@ use config::Config;
 use env_logger::Env;
 use connection::run_script;
 use agent::{BoxAgent, Device, DeviceType};
+use futures::stream::TryStreamExt;
 
 mod agent;
 mod config;
@@ -35,10 +36,14 @@ async fn main() -> Result<()> {
 
     let devices = agent.list_device().await?;
     log::info!("Devices {:#?}", devices);
-    let stream = agent.capture_packets(&Device {
+    let mut stream = agent.capture_packets(&Device {
         device_type: DeviceType::Dev,
-        name: "mon0".to_string(),
+        name: "wlan1mon".to_string(),
     }).await?;
+
+    while let Some(p) = stream.try_next().await? {
+        log::trace!("Packet {:x?}", &p.data[18..18+6]);
+    }
 
     log::info!("devices: {:?}", devices);
 

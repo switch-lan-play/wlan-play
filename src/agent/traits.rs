@@ -5,6 +5,8 @@ pub use tokio::{
     stream::Stream
 };
 
+pub use crate::utils::pcap_reader::Packet;
+
 #[derive(Debug)]
 pub enum DeviceType {
     Dev,
@@ -15,10 +17,6 @@ pub enum DeviceType {
 pub struct Device {
     pub device_type: DeviceType,
     pub name: String,
-}
-
-pub struct Packet {
-    pub data: Vec<u8>,
 }
 
 #[async_trait::async_trait]
@@ -33,14 +31,14 @@ pub trait Executor {
         Ok(String::from_utf8(self.exec_bytes(command.as_bytes()).await?)?)
     }
     /// For infinite output
-    async fn exec_stream(&mut self, command: &[u8]) -> Result<Box<dyn AsyncRead>>;
+    async fn exec_stream<'a>(&'a mut self, command: &[u8]) -> Result<Box<dyn AsyncRead + Unpin + Send + 'a>>;
 }
 
 #[async_trait::async_trait]
 pub trait Agent : Executor {
     async fn check(&mut self) -> Result<()>;
     async fn list_device(&mut self) -> Result<Vec<Device>>;
-    async fn capture_packets(&mut self, device: &Device) -> Result<Box<dyn Stream<Item=Packet>>>;
+    async fn capture_packets<'a>(&'a mut self, device: &Device) -> Result<Box<dyn Stream<Item=Result<Packet>> + Unpin + Send + 'a>>;
 }
 
 pub type BoxAgent = Box<dyn Agent + Send + Unpin>;
