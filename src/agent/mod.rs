@@ -12,7 +12,7 @@ pub enum Platform {
 }
 
 
-pub async fn from_connection(platform: Platform, conn: Connection) -> Result<BoxAgent> {
+pub async fn from_connection(platform: &Platform, conn: Connection) -> Result<BoxAgent> {
     let mut agent = match platform {
         Platform::Linux => {
             linux::from_connection(conn).await?

@@ -15,7 +15,7 @@ pub enum ConnectionConfig {
     Command { command: Vec<String> },
 }
 
-pub async fn connect(connection: ConnectionConfig) -> Result<Connection> {
+pub async fn connect(connection: &ConnectionConfig) -> Result<Connection> {
     let stream = match connection {
         ConnectionConfig::Url { url } => {
             match url.scheme() {

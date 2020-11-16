@@ -4,11 +4,26 @@ use tokio::fs::read;
 use config::Config;
 use env_logger::Env;
 use connection::run_script;
+use agent::BoxAgent;
 
 mod agent;
 mod config;
 mod connection;
 mod utils;
+
+async fn get_agent(config: &Config) -> Result<BoxAgent> {
+    let mut conn = connection::connect(&config.agent.connection).await?;
+
+    if let Some(script) = &config.agent.after_connected {
+        log::debug!("after_connected is set, run script...");
+        conn = run_script(conn, script.clone()).await?;
+    }
+    log::debug!("Connection is ready");
+
+    let agent = agent::from_connection(&config.agent.platform, conn).await?;
+
+    Ok(agent)
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -16,15 +31,7 @@ async fn main() -> Result<()> {
 
     let config: Config = from_slice(&read("config.toml").await?)?;
 
-    let mut conn = connection::connect(config.agent.connection).await?;
-
-    if let Some(script) = &config.agent.after_connected {
-        log::info!("after_connected is set, run script...");
-        conn = run_script(conn, script.clone()).await?;
-    }
-    log::info!("Connection is ready");
-
-    let mut agent = agent::from_connection(config.agent.platform, conn).await?;
+    let mut agent = get_agent(&config).await?;
 
     let devices = agent.list_device().await?;
 
