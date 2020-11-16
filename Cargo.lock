@@ -580,6 +580,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordered-float"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3741934be594d77de1c8461ebcbbe866f585ea616a9753aa78f2bdc69f0e4579"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -764,6 +773,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-value"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a65a7291a8a568adcae4c10a677ebcedbc6c9cec91c054dee2ce40b0e3290eb"
+dependencies = [
+ "ordered-float",
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -772,6 +791,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "serde_ltsv"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c66aeb2c26c8f516f5961fa2b97bae1f5bc7133ef8437948bcefc95337f693ea"
+dependencies = [
+ "serde",
+ "serde-value",
+ "serde_derive",
 ]
 
 [[package]]
@@ -1136,9 +1166,11 @@ dependencies = [
  "env_logger",
  "futures",
  "log",
+ "regex",
  "rhai",
  "serde",
  "serde_derive",
+ "serde_ltsv",
  "thrussh",
  "thrussh-keys",
  "tokio",

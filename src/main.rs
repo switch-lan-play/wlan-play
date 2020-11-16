@@ -4,7 +4,7 @@ use tokio::fs::read;
 use config::Config;
 use env_logger::Env;
 use connection::run_script;
-use agent::BoxAgent;
+use agent::{BoxAgent, Device, DeviceType};
 
 mod agent;
 mod config;
@@ -34,6 +34,11 @@ async fn main() -> Result<()> {
     let mut agent = get_agent(&config).await?;
 
     let devices = agent.list_device().await?;
+    log::info!("Devices {:#?}", devices);
+    let stream = agent.capture_packets(&Device {
+        device_type: DeviceType::Dev,
+        name: "wlan1mon".to_string(),
+    }).await?;
 
     log::info!("devices: {:?}", devices);
 

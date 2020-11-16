@@ -1,5 +1,5 @@
 use crate::Result;
-pub use traits::{Agent, BoxAgent, Commander};
+pub use traits::*;
 use crate::connection::Connection;
 use serde_derive::Deserialize;
 
@@ -10,7 +10,6 @@ mod linux;
 pub enum Platform {
     Linux,
 }
-
 
 pub async fn from_connection(platform: &Platform, conn: Connection) -> Result<BoxAgent> {
     let mut agent = match platform {
