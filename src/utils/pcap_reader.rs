@@ -1,10 +1,11 @@
 use std::{io::{Write, Cursor}, pin::Pin, task::{Context, Poll}};
-use tokio::{io::{AsyncRead, AsyncReadExt, ReadBuf}, stream::Stream};
+use tokio::{io::{AsyncRead, AsyncReadExt, ReadBuf}, stream::Stream, time::timeout};
 use pcap_parser::{LegacyPcapBlock, LegacyPcapReader, Linktype, PcapBlockOwned, PcapError, traits::PcapReaderIterator};
 use futures::ready;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Result, Context as _};
 use ringbuf::{RingBuffer, Consumer, Producer};
 use byteorder::{LittleEndian, ReadBytesExt};
+use super::timeout::DEFAULT_TIMEOUT;
 
 pub struct Packet {
     pub data: Vec<u8>,
@@ -24,8 +25,11 @@ where
     pub async fn new(mut reader: R) -> Result<Self> {
         let buffer = RingBuffer::<u8>::new(2048);
         let (mut prod, cons) = buffer.split();
-        let mut buf = [0u8; 32];
-        reader.read_exact(&mut buf).await?;
+        // pcap header
+        let mut buf = [0u8; 24];
+        timeout(DEFAULT_TIMEOUT, reader.read_exact(&mut buf))
+            .await
+            .context("Timed out when waiting for pcap header.")??;
         prod.write_all(&buf)?;
         prod.flush()?;
         // log::trace!("fuck {:?}", String::from_utf8(buf.to_vec()));
