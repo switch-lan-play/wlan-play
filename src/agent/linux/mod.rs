@@ -6,6 +6,8 @@ use tokio::{io::BufReader, prelude::*};
 use regex::Regex;
 use std::future::Future;
 
+mod airnetwork;
+
 pub struct LinuxAgent<F> {
     conn: LinuxExecutor,
     factory: F,
