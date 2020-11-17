@@ -2,9 +2,14 @@
 use protocol::*;
 use deku::prelude::*;
 use tokio::prelude::*;
-use std::{io, collections::VecDeque};
+use std::{io, collections::VecDeque, mem::size_of};
 
 type Packet = Vec<u8>;
+const HEADER_LEN: usize = size_of::<NetCmdHeader>();
+
+fn other<E: std::error::Error + Send + Sync + 'static>(err: E) -> io::Error {
+    io::Error::new(io::ErrorKind::Other, err)
+}
 
 /// A client to communicate with airserv-ng
 ///
@@ -18,7 +23,7 @@ impl<S> AirNetwork<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    fn new(stream: S) -> AirNetwork<S> {
+    pub fn new(stream: S) -> AirNetwork<S> {
         AirNetwork {
             s: stream,
             queue: VecDeque::new(),
@@ -30,15 +35,46 @@ where
         
         self.s.write_all(&bytes).await
     }
+    async fn get(&mut self) -> io::Result<NetCmd> {
+        let mut buf = vec![0u8; HEADER_LEN];
+        self.s.read_exact(&mut buf).await?;
+        let (_, header) = NetCmdHeader::from_bytes((&buf, 0)).map_err(other)?;
+
+        buf.resize(buf.len() + header.len as usize, 0);
+        self.s.read_exact(&mut buf[HEADER_LEN..]).await?;
+
+        let (_, frame) = NetCmdFrame::from_bytes((&buf, 0)).map_err(other)?;
+
+        Ok(frame.body)
+    }
+    async fn get_no_packet(&mut self) -> io::Result<NetCmd> {
+        loop {
+            let p = match self.get().await? {
+                NetCmd::Packet(p) => {
+                    p
+                },
+                p @ _ => return Ok(p),
+            };
+            self.queue.push_back(p);
+        }
+    }
     pub async fn read(&mut self) -> io::Result<Packet> {
         if let Some(i) = self.queue.pop_front() {
             return Ok(i)
         }
 
-        todo!()
+        let resp = self.get().await?;
+        match resp {
+            NetCmd::Packet(p) => Ok(p),
+            _ => Err(io::ErrorKind::InvalidData.into())
+        }
     }
-    pub async fn write() {
-
+    pub async fn write(&mut self, data: Vec<u8>) -> io::Result<()> {
+        self.cmd(NetCmd::Write(data)).await?;
+        // match self.get_no_packet().await? {
+        //     NetCmd::Rc(rc) => {},
+        // };
+        Ok(())
     }
     pub async fn set_channel() {
 
@@ -70,8 +106,8 @@ mod protocol {
     #[derive(Debug, DekuRead, DekuWrite)]
     #[deku(endian = "big")]
     pub struct NetCmdHeader {
-        cmd: u8,
-        len: u32,
+        pub cmd: u8,
+        pub len: u32,
     }
 
     #[derive(Debug, DekuRead, DekuWrite, PartialEq)]
@@ -125,10 +161,10 @@ mod protocol {
     #[derive(Debug, DekuRead, DekuWrite, PartialEq)]
     #[deku(endian = "big")]
     pub struct NetCmdFrame {
-        cmd: u8,
-        len: u32,
+        pub cmd: u8,
+        pub len: u32,
         #[deku(ctx = "*cmd, *len")]
-        body: NetCmd,
+        pub body: NetCmd,
     }
 
     #[test]
