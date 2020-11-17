@@ -11,6 +11,7 @@ mod agent;
 mod config;
 mod connection;
 mod utils;
+mod remote_device;
 
 async fn get_agent(config: &Config) -> Result<BoxAgent> {
     let mut conn = connection::connect(&config.agent.connection).await?;

@@ -35,7 +35,7 @@ pub trait Executor {
 }
 
 #[async_trait::async_trait]
-pub trait Agent : Executor {
+pub trait Agent {
     async fn check(&mut self) -> Result<()>;
     async fn list_device(&mut self) -> Result<Vec<Device>>;
     async fn capture_packets<'a>(&'a mut self, device: &Device) -> Result<Box<dyn Stream<Item=Result<Packet>> + Unpin + Send + 'a>>;

@@ -24,11 +24,15 @@ impl LinuxAgent {
     }
     async fn command_match(&mut self, command: &str, re: &str) -> Result<String> {
         let output = self.exec(command).await?;
-        if !Regex::new(re)?.is_match(&output) {
-            log::debug!("cmd: {:?}\noutput: {:?}", command, output);
-            Err(anyhow!("The output of command: {} is not matched with regex: {}", command, re))?;
+        match Regex::new(re)?.captures(&output) {
+            Some(output) => {
+                Ok(output.get(1).expect("Make sure there is a group in your RE").as_str().to_owned())
+            }
+            None => {
+                log::debug!("cmd: {:?}\noutput: {:?}", command, output);
+                Err(anyhow!("The output of command: {} is not matched with regex: {}", command, re))
+            }
         }
-        Ok(output)
     }
 }
 
@@ -45,7 +49,8 @@ impl Executor for LinuxAgent {
         let result = self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"---end---\n"[..]).await?;
         let retcode = String::from_utf8(self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"\n"[..]).await?)?;
         let retcode = retcode.trim().parse::<u8>()?;
-        log::info!("retcode {:?}", retcode);
+        log::debug!("retcode {:?}", retcode);
+        // TODO: return retcode in some way
 
         Ok(result)
     }
@@ -69,10 +74,11 @@ impl Agent for LinuxAgent {
         log::trace!("check");
         let tcpdump_version = self.command_match(
             "tcpdump --version 2>&1",
-            r"^tcpdump version .*\nlibpcap version .*\nOpenSSL .*\n$"
+            r"^(tcpdump version .*\nlibpcap version .*\nOpenSSL .*\n)$"
         ).await?;
-        let iw_version = self.command_match("iw --version", r"^iw version .*\n$").await?;
-        log::info!("check passed:\n{}{}", tcpdump_version, iw_version.trim_end());
+        let iw_version = self.command_match("iw --version", r"^(iw version .*\n)$").await?;
+        let airserv_version = self.command_match("airserv-ng", r"(Airserv-ng\s+.*?)-").await?;
+        log::debug!("check passed:\n{}{}{}\n", tcpdump_version, iw_version, airserv_version);
         Ok(())
     }
 
@@ -108,7 +114,7 @@ impl Agent for LinuxAgent {
         match device.device_type {
             DeviceType::Dev => {
                 let cmd = format!("tcpdump --immediate-mode -l -w - -i {}", device.name);
-                log::info!("cmd {}", cmd);
+                log::debug!("cmd {}", cmd);
                 let stream = self.exec_stream(cmd.as_bytes()).await?;
                 let reader = PcapReader::new(stream).await?;
                 return Ok(Box::new(reader));
