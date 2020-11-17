@@ -5,7 +5,11 @@ use futures::ready;
 use anyhow::{anyhow, Result, Context as _};
 use ringbuf::{RingBuffer, Consumer, Producer};
 use byteorder::{LittleEndian, ReadBytesExt};
-use super::{Packet, timeout::DEFAULT_TIMEOUT};
+use super::timeout::DEFAULT_TIMEOUT;
+
+pub struct Packet {
+    pub data: Vec<u8>,
+}
 
 pub struct PcapReader<R> {
     reader: R,

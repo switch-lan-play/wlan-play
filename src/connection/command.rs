@@ -1,5 +1,4 @@
 use anyhow::Result;
-use super::AsyncStream;
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use std::process::Stdio;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -49,8 +48,4 @@ impl AsyncWrite for CommandConnection {
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(self.stdin()).poll_shutdown(cx)
     }
-}
-
-#[async_trait::async_trait]
-impl AsyncStream for CommandConnection {
 }

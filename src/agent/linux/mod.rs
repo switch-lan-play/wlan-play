@@ -1,22 +1,22 @@
 use anyhow::{anyhow, Result};
-use super::{Agent, Executor, Stream, Packet, Device, DeviceType};
+use super::{Agent, Executor, Stream, Packet, Device, DeviceType, AsyncStream};
 use crate::connection::Connection;
 use crate::utils::{pcap_reader::PcapReader, timeout::{TimeoutExt, DEFAULT_TIMEOUT}};
-use tokio::prelude::*;
+use tokio::{io::BufReader, prelude::*};
 use regex::Regex;
 use std::future::Future;
 
 pub struct LinuxAgent<F> {
-    factory: F,
     conn: LinuxExecutor,
+    factory: F,
 }
 
 impl<F> LinuxAgent<F>
 {
     pub async fn new<Fut>(factory: F) -> Result<LinuxAgent<F>>
     where
-        F: Fn() -> Fut + Send,
-        Fut: Future<Output=Result<Connection>>
+        F: Fn() -> Fut + Send + Sync,
+        Fut: Future<Output=Result<Connection>> + Send + 'static
     {
         Ok(LinuxAgent {
             conn: LinuxExecutor::from_factory(&factory).await?,
@@ -39,9 +39,10 @@ impl<F> LinuxAgent<F>
 }
 
 #[async_trait::async_trait]
-impl<F> Agent for LinuxAgent<F>
+impl<F, Fut> Agent for LinuxAgent<F>
 where
-    F: Send,
+    F: Fn() -> Fut + Send + Sync,
+    Fut: Future<Output=Result<Connection>> + Send + 'static
 {
     async fn check(&mut self) -> Result<()> {
         log::trace!("check");
@@ -97,6 +98,32 @@ where
         }
     }
 
+    async fn send_packets<'a>(&mut self, device: &Device, _packets: Box<dyn Stream<Item=Packet> + Unpin + Send + 'a>) -> Result<()> {
+        assert_eq!(device.device_type, DeviceType::Dev);
+        let device_name = device.name.clone();
+        // kill previous server
+        self.conn.exec("killall airserv-ng").await?;
+
+        let conn = (&self.factory)().await?;
+        tokio::spawn(async move {
+            let mut serv = LinuxExecutor::new(conn);
+            let serv_stream = serv.exec_stream(
+                format!("airserv-ng -p 666 -d {} -v 3", device_name).as_bytes()
+            ).await?;
+            let mut s = BufReader::new(serv_stream);
+            loop {
+                let mut line = String::new();
+                s.read_line(&mut line).await?;
+                log::trace!("serv log {}", line.trim_end());
+            }
+            #[allow(unreachable_code)]
+            Ok::<(), anyhow::Error>(())
+        });
+
+        let stream = self.conn.exec_stream("nc 127.0.0.1 666".as_bytes()).await?;
+        todo!()
+    }
+
     fn platform(&self) -> super::Platform {
         super::Platform::Linux
     }
@@ -148,7 +175,7 @@ impl Executor for LinuxExecutor {
         Ok(result)
     }
 
-    async fn exec_stream<'a>(&'a mut self, command: &[u8]) -> Result<Box<dyn AsyncRead + Unpin + Send + 'a>> {
+    async fn exec_stream<'a>(&'a mut self, command: &[u8]) -> Result<Box<dyn AsyncStream + Unpin + Send + 'a>> {
         self.0.write_all("echo '---start---'\n".as_bytes()).await?;
         self.0.flush().await?;
         self.assert_line("---start---").await?;

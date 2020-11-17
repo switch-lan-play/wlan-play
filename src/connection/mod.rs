@@ -55,11 +55,12 @@ pub async fn connect(config: ConnectionConfig) -> Result<Connection> {
     Ok(conn)
 }
 
-#[async_trait::async_trait]
 pub trait AsyncStream: AsyncRead + AsyncWrite {
 }
 
 pub type BoxAsyncStream = Box<dyn AsyncStream + Send + Sync + Unpin>;
 
 pub type Connection = BufStream<BoxAsyncStream>;
-// type ConnectionFactory = Box<dyn (Fn() -> BoxFuture<'static, Result<Connection>>) + Send + 'static>;
+
+impl<T: AsyncRead + AsyncWrite> AsyncStream for T {}
+// impl<T: AsyncRead + AsyncWrite> AsyncStream for &mut Connection {}

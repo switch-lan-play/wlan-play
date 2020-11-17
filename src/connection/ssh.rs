@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use tokio::io::ReadBuf;
-use super::{Url, AsyncStream, AsyncRead, AsyncWrite};
+use super::{Url, AsyncRead, AsyncWrite};
 use thrussh::{client, ChannelMsg};
 use thrussh_keys::key;
 use std::{sync::Arc, pin::Pin, task::{Context, Poll}, io};
@@ -104,10 +104,6 @@ impl AsyncWrite for SshConnection {
     fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Poll::Ready(Ok(()))
     }
-}
-
-#[async_trait::async_trait]
-impl AsyncStream for SshConnection {
 }
 
 struct Handler;

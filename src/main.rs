@@ -3,8 +3,6 @@ use toml::from_slice;
 use tokio::fs::read;
 use config::Config;
 use env_logger::Env;
-use futures::stream::TryStreamExt;
-use remote_device::RemoteDevice;
 
 mod agent;
 mod config;
@@ -23,21 +21,31 @@ async fn main() -> Result<()> {
     let devices = agent.list_device().await?;
     log::info!("Devices {:#?}", devices);
 
-    let remote = RemoteDevice::new(
-        || async { agent::from_config(&config.agent).await },
-        config.device.clone()
-    ).await?;
+    // let remote = remote_device::RemoteDevice::new(
+    //     || async { agent::from_config(&config.agent).await },
+    //     config.device.clone()
+    // ).await?;
 
-    // let mut stream = agent.capture_packets(&Device {
-    //     device_type: DeviceType::Dev,
+    // let mut stream = agent.capture_packets(&agent::Device {
+    //     device_type: agent::DeviceType::Dev,
     //     name: config.device,
     // }).await?;
-
+    // use futures::stream::TryStreamExt;
     // while let Some(p) = stream.try_next().await? {
     //     log::trace!("Packet {:x?}", &p.data[..]);
     // }
 
-    // log::info!("devices: {:?}", devices);
+    use tokio::time;
+    use futures::stream::StreamExt;
+    let a = time::interval(time::Duration::from_secs(1))
+        .map(|_| utils::Packet {
+            data: vec![0, 1, 2, 3]
+        });
+    let d = agent::Device {
+        device_type: agent::DeviceType::Dev,
+        name: config.device,
+    };
+    agent.send_packets(&d, Box::new(a)).await?;
 
     Ok(())
 }
