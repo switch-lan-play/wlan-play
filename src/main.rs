@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     log::info!("Devices {:#?}", devices);
     let mut stream = agent.capture_packets(&Device {
         device_type: DeviceType::Dev,
-        name: "wlan1mon".to_string(),
+        name: config.device,
     }).await?;
 
     while let Some(p) = stream.try_next().await? {

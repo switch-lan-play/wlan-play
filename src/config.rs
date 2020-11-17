@@ -6,11 +6,15 @@ use crate::connection::ConnectionConfig;
 pub struct Agent {
     #[serde(flatten)]
     pub connection: ConnectionConfig,
+    /// rhai script will be run after connected
     pub after_connected: Option<String>,
     pub platform: Platform,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
-    pub agent: Agent
+    /// agent config
+    pub agent: Agent,
+    /// device must be monitor type
+    pub device: String,
 }
