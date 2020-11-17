@@ -2,9 +2,10 @@ use anyhow::{anyhow, Result};
 use super::{Agent, Executor, Stream, Packet, Device, DeviceType, AsyncStream};
 use crate::connection::Connection;
 use crate::utils::{pcap_reader::PcapReader, timeout::{TimeoutExt, DEFAULT_TIMEOUT}};
-use tokio::{io::BufReader, prelude::*};
+use tokio::{io::BufReader, prelude::*, time::{sleep, Duration}};
 use regex::Regex;
 use std::future::Future;
+use airnetwork::AirNetwork;
 
 mod airnetwork;
 
@@ -108,9 +109,10 @@ where
 
         let conn = (&self.factory)().await?;
         tokio::spawn(async move {
+            let cmd = format!("airserv-ng -p 16666 -d {} -v 2 2>&1", device_name);
             let mut serv = LinuxExecutor::new(conn);
             let serv_stream = serv.exec_stream(
-                format!("airserv-ng -p 16666 -d {} -v 3", device_name).as_bytes()
+                cmd.as_bytes()
             ).await?;
             let mut s = BufReader::new(serv_stream);
             loop {
@@ -122,7 +124,17 @@ where
             Ok::<(), anyhow::Error>(())
         });
 
-        let stream = self.conn.exec_stream("nc 127.0.0.1 666".as_bytes()).await?;
+        sleep(Duration::from_secs(1)).await;
+
+        let stream = self.conn.exec_stream("nc 127.0.0.1 16666".as_bytes()).await?;
+        let mut air = AirNetwork::new(stream);
+        air.set_channel(11).await?;
+        log::trace!("Current channel: {}", air.get_channel().await?);
+        // log::trace!("Current pkt: {:?}", air.read().await?);
+        loop {
+            let pkt = air.read().await?;
+            log::trace!("{:#x?} {:x?}", &pkt.rx_info, &pkt.data[..10]);
+        }
         todo!()
     }
 
@@ -182,10 +194,10 @@ impl Executor for LinuxExecutor {
         self.0.flush().await?;
         self.assert_line("---start---").await?;
         self.0.write_all(command).await?;
-        self.0.write_all("\necho '---end---'\n".as_bytes()).await?;
+        self.0.write_all("\n".as_bytes()).await?;
         self.0.flush().await?;
 
-        // TODO: stop at end
+        // TODO: :<
         Ok(Box::new(&mut self.0))
     }
 }
