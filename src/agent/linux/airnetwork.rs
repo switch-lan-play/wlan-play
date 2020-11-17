@@ -11,6 +11,21 @@ fn other<E: std::error::Error + Send + Sync + 'static>(err: E) -> io::Error {
     io::Error::new(io::ErrorKind::Other, err)
 }
 
+fn get_rc(cmd: NetCmd) -> io::Result<u32> {
+    match cmd {
+        NetCmd::Rc(rc) => { Ok(rc) },
+        _ => Err(io::ErrorKind::InvalidData.into())
+    }
+}
+
+fn rc(cmd: NetCmd) -> io::Result<()> {
+    if get_rc(cmd)? == 0 {
+        Ok(())
+    } else {
+        Err(io::ErrorKind::InvalidData.into())
+    }
+}
+
 /// A client to communicate with airserv-ng
 ///
 /// Reference: https://github.com/aircrack-ng/aircrack-ng/blob/565870292e210010dea65ab4f289fc5ff392bd45/lib/osdep/network.c
@@ -71,31 +86,39 @@ where
     }
     pub async fn write(&mut self, data: Vec<u8>) -> io::Result<()> {
         self.cmd(NetCmd::Write(data)).await?;
-        // match self.get_no_packet().await? {
-        //     NetCmd::Rc(rc) => {},
-        // };
-        Ok(())
+        rc(self.get_no_packet().await?)
     }
-    pub async fn set_channel() {
-
+    pub async fn set_channel(&mut self, channel: u32) -> io::Result<()> {
+        self.cmd(NetCmd::SetChan(channel)).await?;
+        rc(self.get_no_packet().await?)
     }
-    pub async fn get_channel() {
-
+    pub async fn get_channel(&mut self) -> io::Result<u32>{
+        self.cmd(NetCmd::GetChan).await?;
+        Ok(get_rc(self.get_no_packet().await?)?)
     }
-    pub async fn set_rate() {
-
+    pub async fn set_rate(&mut self, rate: u32) -> io::Result<()> {
+        self.cmd(NetCmd::SetRate(rate)).await?;
+        rc(self.get_no_packet().await?)
     }
-    pub async fn get_rate() {
-
+    pub async fn get_rate(&mut self) -> io::Result<u32> {
+        self.cmd(NetCmd::GetRate).await?;
+        Ok(get_rc(self.get_no_packet().await?)?)
     }
     pub async fn close() {
 
     }
-    pub async fn get_mac() {
-
+    pub async fn get_mac(&mut self) -> io::Result<[u8; 6]> {
+        self.cmd(NetCmd::GetMac).await?;
+        match self.get_no_packet().await? {
+            NetCmd::Mac(mac) => {
+                Ok(mac)
+            }
+            _ => Err(io::ErrorKind::InvalidData.into())
+        }
     }
-    pub async fn get_monitor() {
-
+    pub async fn get_monitor(&mut self) -> io::Result<u32> {
+        self.cmd(NetCmd::GetRate).await?;
+        Ok(get_rc(self.get_no_packet().await?)?)
     }
 }
 
