@@ -1,5 +1,5 @@
 use anyhow::Result;
-use super::{AsyncStream, BoxAsyncStream};
+use super::AsyncStream;
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use std::process::Stdio;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -10,6 +10,19 @@ pub struct CommandConnection {
 }
 
 impl CommandConnection {
+    pub async fn new((command, args): (&String, &[String])) -> Result<CommandConnection> {
+        let child = Command::new(command)
+            .args(args)
+            .kill_on_drop(true)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+
+        Ok(CommandConnection{
+            child,
+        })
+    }
     fn stdin(&mut self) -> &mut ChildStdin {
         self.child.stdin.as_mut().unwrap()
     }
@@ -40,19 +53,4 @@ impl AsyncWrite for CommandConnection {
 
 #[async_trait::async_trait]
 impl AsyncStream for CommandConnection {
-}
-
-pub async fn connect((command, args): (&String, &[String])) -> Result<BoxAsyncStream> {
-    let child = Command::new(command)
-        .args(args)
-        .kill_on_drop(true)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()?;
-    let conn = Box::new(CommandConnection{
-        child,
-    });
-
-    Ok(conn)
 }

@@ -2,6 +2,7 @@ use crate::Result;
 pub use traits::*;
 use crate::connection::Connection;
 use serde_derive::Deserialize;
+pub use linux::LinuxAgent;
 
 mod traits;
 mod linux;
@@ -14,7 +15,7 @@ pub enum Platform {
 pub async fn from_connection(platform: &Platform, conn: Connection) -> Result<BoxAgent> {
     let mut agent = match platform {
         Platform::Linux => {
-            linux::from_connection(conn).await?
+            Box::new(LinuxAgent::new(conn).await?)
         }
     };
     agent.check().await?;

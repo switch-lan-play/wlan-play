@@ -3,6 +3,8 @@ pub use url::Url;
 pub use script::run_script;
 use serde_derive::Deserialize;
 pub use tokio::io::{AsyncRead, AsyncBufRead, AsyncWrite, BufStream};
+pub use ssh::SshConnection;
+pub use command::CommandConnection;
 
 mod command;
 mod ssh;
@@ -16,11 +18,11 @@ pub enum ConnectionConfig {
 }
 
 pub async fn connect(connection: &ConnectionConfig) -> Result<Connection> {
-    let stream = match connection {
+    let stream: BoxAsyncStream = match connection {
         ConnectionConfig::Url { url } => {
             match url.scheme() {
                 "ssh" => {
-                    ssh::connect(&url).await?
+                    Box::new(SshConnection::new(&url).await?)
                 }
                 _ => {
                     Err(anyhow!("{} not support!", url.scheme()))?
@@ -29,7 +31,7 @@ pub async fn connect(connection: &ConnectionConfig) -> Result<Connection> {
         }
         ConnectionConfig::Command { command } => {
             let (_, args) = command.split_at(1);
-            command::connect((&command[0], args)).await?
+            Box::new(CommandConnection::new((&command[0], args)).await?)
         }
     };
 

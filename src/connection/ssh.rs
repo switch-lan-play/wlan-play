@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use tokio::io::ReadBuf;
-use super::{Url, AsyncStream, AsyncRead, AsyncWrite, BoxAsyncStream};
+use super::{Url, AsyncStream, AsyncRead, AsyncWrite};
 use thrussh::{client, ChannelMsg};
 use thrussh_keys::key;
 use std::{sync::Arc, pin::Pin, task::{Context, Poll}, io};
@@ -10,6 +10,48 @@ pub struct SshConnection {
     _handle: client::Handle,
     channel: client::Channel,
     read_buf: Option<Vec<u8>>,
+}
+
+impl SshConnection {
+    pub async fn new(url: &Url) -> Result<SshConnection> {
+        assert_eq!(url.scheme(), "ssh");
+
+        let config = client::Config::default();
+        let config = Arc::new(config);
+        let addr = format!(
+            "{}:{}",
+            url.host_str().ok_or(anyhow!("Host is empty"))?,
+            url.port_or_known_default().unwrap_or(22)
+        );
+        if url.path().len() == 0 {
+            Err(anyhow!("Command is empty"))?;
+        }
+        let cmd = &url.path()[1..];
+        let mut handle  = client::connect(config, addr, Handler).await?;
+
+        if !handle.authenticate_password(
+            url.username(),
+            url.password().ok_or(anyhow!("Password is empty"))?,
+        ).await? {
+            Err(anyhow!("Failed to login with {}", url.username()))?;
+        }
+
+        let mut channel = handle.channel_open_session().await?;
+        channel.exec(true, cmd).await?;
+        while let Some(msg) = channel.wait().await {
+            log::debug!("exec {:?}", msg);
+            if let ChannelMsg::Success = msg {
+                log::info!("Get shell");
+                break
+            }
+        }
+
+        Ok(SshConnection {
+            _handle: handle,
+            channel,
+            read_buf: None,
+        })
+    }
 }
 
 impl AsyncRead for SshConnection {
@@ -83,44 +125,4 @@ impl client::Handler for Handler {
         log::info!("check_server_key: {:?}", server_public_key);
         self.finished_bool(true)
     }
- }
-
-pub async fn connect(url: &Url) -> Result<BoxAsyncStream> {
-    assert_eq!(url.scheme(), "ssh");
-
-    let config = client::Config::default();
-    let config = Arc::new(config);
-    let addr = format!(
-        "{}:{}",
-        url.host_str().ok_or(anyhow!("Host is empty"))?,
-        url.port_or_known_default().unwrap_or(22)
-    );
-    if url.path().len() == 0 {
-        Err(anyhow!("Command is empty"))?;
-    }
-    let cmd = &url.path()[1..];
-    let mut handle  = client::connect(config, addr, Handler).await?;
-
-    if !handle.authenticate_password(
-        url.username(),
-        url.password().ok_or(anyhow!("Password is empty"))?,
-    ).await? {
-        Err(anyhow!("Failed to login with {}", url.username()))?;
-    }
-
-    let mut channel = handle.channel_open_session().await?;
-    channel.exec(true, cmd).await?;
-    while let Some(msg) = channel.wait().await {
-        log::debug!("exec {:?}", msg);
-        if let ChannelMsg::Success = msg {
-            log::info!("Get shell");
-            break
-        }
-    }
-
-    Ok(Box::new(SshConnection {
-        _handle: handle,
-        channel,
-        read_buf: None,
-    }))
 }

@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use super::{Agent, Executor, BoxAgent, Connection, Stream, Packet, Device, DeviceType};
+use super::{Agent, Executor, Connection, Stream, Packet, Device, DeviceType};
 use crate::utils::{pcap_reader::PcapReader, timeout::{TimeoutExt, DEFAULT_TIMEOUT}};
 use tokio::prelude::*;
 use regex::Regex;
@@ -7,6 +7,9 @@ use regex::Regex;
 pub struct LinuxAgent(Connection);
 
 impl LinuxAgent {
+    pub async fn new(conn: Connection) -> Result<LinuxAgent> {
+        Ok(LinuxAgent(conn))
+    }
     async fn read_line(&mut self) -> Result<String> {
         let mut s = self.0.read_line_timeout(DEFAULT_TIMEOUT).await?;
         s.pop();
@@ -35,10 +38,14 @@ impl Executor for LinuxAgent {
         self.0.write_all("echo '---start---'\n".as_bytes()).await?;
         self.0.write_all(command).await?;
         self.0.write_all("\necho '---end---'\n".as_bytes()).await?;
+        self.0.write_all("\necho $?\n".as_bytes()).await?;
         self.0.flush().await?;
 
         self.assert_line("---start---").await?;
         let result = self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"---end---\n"[..]).await?;
+        let retcode = String::from_utf8(self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"\n"[..]).await?)?;
+        let retcode = retcode.trim().parse::<u8>()?;
+        log::info!("retcode {:?}", retcode);
 
         Ok(result)
     }
@@ -109,8 +116,9 @@ impl Agent for LinuxAgent {
             _ => todo!("Device type not supported {:?}", device.device_type)
         }
     }
+
+    fn platform(&self) -> super::Platform {
+        super::Platform::Linux
+    }
 }
 
-pub async fn from_connection(conn: Connection) -> Result<BoxAgent> {
-    Ok(Box::new(LinuxAgent(conn)))
-}
