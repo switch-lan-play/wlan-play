@@ -1,10 +1,10 @@
 use anyhow::Result;
+use super::Platform;
 pub use tokio::{
     io::{self, AsyncRead, AsyncBufRead, AsyncBufReadExt, AsyncWrite},
     time::{timeout, Duration},
     stream::Stream
 };
-
 pub use crate::utils::pcap_reader::Packet;
 
 #[derive(Debug)]
@@ -39,6 +39,7 @@ pub trait Agent : Executor {
     async fn check(&mut self) -> Result<()>;
     async fn list_device(&mut self) -> Result<Vec<Device>>;
     async fn capture_packets<'a>(&'a mut self, device: &Device) -> Result<Box<dyn Stream<Item=Result<Packet>> + Unpin + Send + 'a>>;
+    fn platform(&self) -> Platform;
 }
 
 pub type BoxAgent = Box<dyn Agent + Send + Unpin>;
