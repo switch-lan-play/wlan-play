@@ -92,9 +92,9 @@ where
         self.cmd(NetCmd::SetChan(channel)).await?;
         rc(self.get_no_packet().await?)
     }
-    pub async fn get_channel(&mut self) -> io::Result<u32>{
+    pub async fn get_channel(&mut self) -> io::Result<i32>{
         self.cmd(NetCmd::GetChan).await?;
-        Ok(get_rc(self.get_no_packet().await?)?)
+        Ok(get_rc(self.get_no_packet().await?)? as i32)
     }
     pub async fn set_rate(&mut self, rate: u32) -> io::Result<()> {
         self.cmd(NetCmd::SetRate(rate)).await?;
@@ -140,7 +140,6 @@ mod protocol {
         pub antenna: u32,
     }
 
-    
     #[derive(Debug, DekuRead, DekuWrite, PartialEq)]
     #[deku(endian = "big")]
     #[deku(ctx = "_endian: Endian, len: u32")]

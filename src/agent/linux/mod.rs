@@ -130,11 +130,12 @@ where
         let mut air = AirNetwork::new(stream);
         air.set_channel(11).await?;
         log::trace!("Current channel: {}", air.get_channel().await?);
-        // log::trace!("Current pkt: {:?}", air.read().await?);
-        loop {
-            let pkt = air.read().await?;
-            log::trace!("{:#?} {:x?}", &pkt.rx_info, &pkt.data[..10]);
-        }
+        log::trace!("Mac: {:x?}", air.get_mac().await?);
+        log::trace!("Monitor: {}", air.get_monitor().await?);
+        // loop {
+        //     let pkt = air.read().await?;
+        //     log::trace!("{:#?} {:x?}", &pkt.rx_info, &pkt.data[..10]);
+        // }
         todo!()
     }
 
