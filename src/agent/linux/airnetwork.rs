@@ -1,27 +1,41 @@
 
-use tokio::io::{AsyncRead, AsyncWrite};
+use protocol::*;
+use deku::prelude::*;
+use tokio::prelude::*;
+use std::{io, collections::VecDeque};
+
+type Packet = Vec<u8>;
 
 /// A client to communicate with airserv-ng
 ///
 /// Reference: https://github.com/aircrack-ng/aircrack-ng/blob/565870292e210010dea65ab4f289fc5ff392bd45/lib/osdep/network.c
 pub struct AirNetwork<S> {
     s: S,
+    queue: VecDeque<Packet>,
 }
 
 impl<S> AirNetwork<S>
 where
-    S: AsyncRead + AsyncWrite,
+    S: AsyncRead + AsyncWrite + Unpin,
 {
     fn new(stream: S) -> AirNetwork<S> {
         AirNetwork {
             s: stream,
+            queue: VecDeque::new(),
         }
     }
-    async fn cmd() {
-
+    async fn cmd(&mut self, cmd: NetCmd) -> io::Result<()> {
+        let frame: NetCmdFrame = cmd.into();
+        let bytes = frame.to_bytes().unwrap();
+        
+        self.s.write_all(&bytes).await
     }
-    pub async fn read() {
+    pub async fn read(&mut self) -> io::Result<Packet> {
+        if let Some(i) = self.queue.pop_front() {
+            return Ok(i)
+        }
 
+        todo!()
     }
     pub async fn write() {
 
