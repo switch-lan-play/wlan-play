@@ -132,8 +132,8 @@ mod protocol {
     #[deku(ctx = "_endian: Endian")]
     pub struct RxInfo {
         pub machine: u64,
-        pub power: u32,
-        pub noise: u32,
+        pub power: i32,
+        pub noise: i32,
         pub channel: u32,
         pub freq: u32,
         pub rate: u32,

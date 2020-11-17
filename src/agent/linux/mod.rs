@@ -133,7 +133,7 @@ where
         // log::trace!("Current pkt: {:?}", air.read().await?);
         loop {
             let pkt = air.read().await?;
-            log::trace!("{:#x?} {:x?}", &pkt.rx_info, &pkt.data[..10]);
+            log::trace!("{:#?} {:x?}", &pkt.rx_info, &pkt.data[..10]);
         }
         todo!()
     }
