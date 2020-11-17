@@ -1,29 +1,31 @@
 use anyhow::{anyhow, Result};
-use super::{Agent, Executor, Connection, Stream, Packet, Device, DeviceType};
+use super::{Agent, Executor, Stream, Packet, Device, DeviceType};
+use crate::connection::Connection;
 use crate::utils::{pcap_reader::PcapReader, timeout::{TimeoutExt, DEFAULT_TIMEOUT}};
 use tokio::prelude::*;
 use regex::Regex;
+use std::future::Future;
 
-pub struct LinuxAgent(Connection);
+pub struct LinuxAgent<F> {
+    factory: F,
+    conn: LinuxExecutor,
+}
 
-impl LinuxAgent {
-    pub async fn new(conn: Connection) -> Result<LinuxAgent> {
-        Ok(LinuxAgent(conn))
+impl<F> LinuxAgent<F>
+{
+    pub async fn new<Fut>(factory: F) -> Result<LinuxAgent<F>>
+    where
+        F: Fn() -> Fut + Send,
+        Fut: Future<Output=Result<Connection>>
+    {
+        Ok(LinuxAgent {
+            conn: LinuxExecutor::from_factory(&factory).await?,
+            factory,
+        })
     }
-    async fn read_line(&mut self) -> Result<String> {
-        let mut s = self.0.read_line_timeout(DEFAULT_TIMEOUT).await?;
-        s.pop();
-        Ok(s)
-    }
-    async fn assert_line(&mut self, expect: &str) -> Result<()> {
-        if expect != &self.read_line().await? {
-            return Err(anyhow!("Failed to assert_line"));
-        }
 
-        Ok(())
-    }
     async fn command_match(&mut self, command: &str, re: &str) -> Result<String> {
-        let output = self.exec(command).await?;
+        let output = self.conn.exec(command).await?;
         match Regex::new(re)?.captures(&output) {
             Some(output) => {
                 Ok(output.get(1).expect("Make sure there is a group in your RE").as_str().to_owned())
@@ -37,55 +39,27 @@ impl LinuxAgent {
 }
 
 #[async_trait::async_trait]
-impl Executor for LinuxAgent {
-    async fn exec_bytes(&mut self, command: &[u8]) -> Result<Vec<u8>> {
-        self.0.write_all("echo '---start---'\n".as_bytes()).await?;
-        self.0.write_all(command).await?;
-        self.0.write_all("\necho '---end---'\n".as_bytes()).await?;
-        self.0.write_all("\necho $?\n".as_bytes()).await?;
-        self.0.flush().await?;
-
-        self.assert_line("---start---").await?;
-        let result = self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"---end---\n"[..]).await?;
-        let retcode = String::from_utf8(self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"\n"[..]).await?)?;
-        let retcode = retcode.trim().parse::<u8>()?;
-        log::debug!("retcode {:?}", retcode);
-        // TODO: return retcode in some way
-
-        Ok(result)
-    }
-
-    async fn exec_stream<'a>(&'a mut self, command: &[u8]) -> Result<Box<dyn AsyncRead + Unpin + Send + 'a>> {
-        self.0.write_all("echo '---start---'\n".as_bytes()).await?;
-        self.0.flush().await?;
-        self.assert_line("---start---").await?;
-        self.0.write_all(command).await?;
-        self.0.write_all("\necho '---end---'\n".as_bytes()).await?;
-        self.0.flush().await?;
-
-        // TODO: stop at end
-        Ok(Box::new(&mut self.0))
-    }
-}
-
-#[async_trait::async_trait]
-impl Agent for LinuxAgent {
+impl<F> Agent for LinuxAgent<F>
+where
+    F: Send,
+{
     async fn check(&mut self) -> Result<()> {
         log::trace!("check");
         let tcpdump_version = self.command_match(
             "tcpdump --version 2>&1",
-            r"^(tcpdump version .*\nlibpcap version .*\nOpenSSL .*\n)$"
+            r"^(tcpdump version .*\nlibpcap version .*\nOpenSSL .*)\n$"
         ).await?;
-        let iw_version = self.command_match("iw --version", r"^(iw version .*\n)$").await?;
+        let iw_version = self.command_match("iw --version", r"^(iw version .*)\n$").await?;
         let airserv_version = self.command_match("airserv-ng", r"(Airserv-ng\s+.*?)-").await?;
-        log::debug!("check passed:\n{}{}{}\n", tcpdump_version, iw_version, airserv_version);
+        let nc_version = self.command_match("nc -h 2>&1", r"(OpenBSD netcat.*)\n").await?;
+        log::debug!("check passed:\n{}\n{}\n{}\n{}", tcpdump_version, iw_version, airserv_version, nc_version);
         Ok(())
     }
 
     async fn list_device(&mut self) -> Result<Vec<Device>> {
         log::trace!("list_device");
         let re = Regex::new(r"Wiphy\s+(?P<phy>\w+)")?;
-        let s = self.exec("iw list").await?;
+        let s = self.conn.exec("iw list").await?;
         let mut out: Vec<Device> = vec![];
 
         for c in re.captures_iter(&s) {
@@ -97,7 +71,7 @@ impl Agent for LinuxAgent {
         }
 
         let re = Regex::new(r"Interface\s+(?P<dev>\w+)")?;
-        let s = self.exec("iw dev").await?;
+        let s = self.conn.exec("iw dev").await?;
         for c in re.captures_iter(&s) {
             let name = c.name("dev").unwrap().as_str().to_string();
             out.push(Device {
@@ -115,7 +89,7 @@ impl Agent for LinuxAgent {
             DeviceType::Dev => {
                 let cmd = format!("tcpdump --immediate-mode -l -w - -i {}", device.name);
                 log::debug!("cmd {}", cmd);
-                let stream = self.exec_stream(cmd.as_bytes()).await?;
+                let stream = self.conn.exec_stream(cmd.as_bytes()).await?;
                 let reader = PcapReader::new(stream).await?;
                 return Ok(Box::new(reader));
             }
@@ -128,3 +102,61 @@ impl Agent for LinuxAgent {
     }
 }
 
+pub struct LinuxExecutor(Connection);
+
+impl LinuxExecutor {
+    pub fn new(conn: Connection) -> LinuxExecutor {
+        LinuxExecutor(conn)
+    }
+    pub async fn from_factory<F, Fut>(factory: &F) -> Result<LinuxExecutor>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output=Result<Connection>>
+    {
+        Ok(Self::new(factory().await?))
+    }
+    async fn read_line(&mut self) -> Result<String> {
+        let mut s = self.0.read_line_timeout(DEFAULT_TIMEOUT).await?;
+        s.pop();
+        Ok(s)
+    }
+    async fn assert_line(&mut self, expect: &str) -> Result<()> {
+        if expect != &self.read_line().await? {
+            return Err(anyhow!("Failed to assert_line"));
+        }
+
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl Executor for LinuxExecutor {
+    async fn exec_bytes(&mut self, command: &[u8]) -> Result<Vec<u8>> {
+        self.0.write_all("echo '---start---'\n".as_bytes()).await?;
+        self.0.write_all(command).await?;
+        self.0.write_all("\necho '---end---'\n".as_bytes()).await?;
+        self.0.write_all("\necho $?\n".as_bytes()).await?;
+        self.0.flush().await?;
+
+        self.assert_line("---start---").await?;
+        let result = self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"---end---\n"[..]).await?;
+        let retcode = String::from_utf8(self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"\n"[..]).await?)?;
+        let retcode = retcode.trim().parse::<u8>()?;
+        log::trace!("retcode {:?}", retcode);
+        // TODO: return retcode in some way
+
+        Ok(result)
+    }
+
+    async fn exec_stream<'a>(&'a mut self, command: &[u8]) -> Result<Box<dyn AsyncRead + Unpin + Send + 'a>> {
+        self.0.write_all("echo '---start---'\n".as_bytes()).await?;
+        self.0.flush().await?;
+        self.assert_line("---start---").await?;
+        self.0.write_all(command).await?;
+        self.0.write_all("\necho '---end---'\n".as_bytes()).await?;
+        self.0.flush().await?;
+
+        // TODO: stop at end
+        Ok(Box::new(&mut self.0))
+    }
+}

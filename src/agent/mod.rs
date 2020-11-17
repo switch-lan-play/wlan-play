@@ -1,8 +1,8 @@
 use crate::Result;
 pub use traits::*;
-use crate::connection::Connection;
 use serde_derive::Deserialize;
 pub use linux::LinuxAgent;
+use crate::connection::{ConnectionConfig, connect};
 
 mod traits;
 mod linux;
@@ -12,12 +12,26 @@ pub enum Platform {
     Linux,
 }
 
-pub async fn from_connection(platform: &Platform, conn: Connection) -> Result<BoxAgent> {
-    let mut agent = match platform {
+#[derive(Deserialize, Debug)]
+pub struct AgentConfig {
+    #[serde(flatten)]
+    pub connection: ConnectionConfig,
+    pub platform: Platform,
+}
+
+pub async fn from_config(config: &AgentConfig) -> Result<BoxAgent> 
+{
+    let conn_cfg = config.connection.clone();
+    let factory = move || {
+        connect(conn_cfg.clone())
+    };
+
+    let mut agent: BoxAgent = match config.platform {
         Platform::Linux => {
-            Box::new(LinuxAgent::new(conn).await?)
+            Box::new(LinuxAgent::new(factory).await?)
         }
     };
     agent.check().await?;
+
     Ok(agent)
 }

@@ -10,16 +10,26 @@ mod command;
 mod ssh;
 mod script;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
-pub enum ConnectionConfig {
+pub enum ConnectionMethod {
     Url { url: Url },
     Command { command: Vec<String> },
 }
 
-pub async fn connect(connection: &ConnectionConfig) -> Result<Connection> {
-    let stream: BoxAsyncStream = match connection {
-        ConnectionConfig::Url { url } => {
+#[derive(Deserialize, Debug, Clone)]
+pub struct ConnectionConfig {
+    #[serde(flatten)]
+    pub method: ConnectionMethod,
+    
+    /// rhai script will be run after connected
+    pub after_connected: Option<String>,
+}
+
+
+pub async fn connect(config: ConnectionConfig) -> Result<Connection> {
+    let stream: BoxAsyncStream = match config.method {
+        ConnectionMethod::Url { url } => {
             match url.scheme() {
                 "ssh" => {
                     Box::new(SshConnection::new(&url).await?)
@@ -29,13 +39,20 @@ pub async fn connect(connection: &ConnectionConfig) -> Result<Connection> {
                 }
             }
         }
-        ConnectionConfig::Command { command } => {
+        ConnectionMethod::Command { command } => {
             let (_, args) = command.split_at(1);
             Box::new(CommandConnection::new((&command[0], args)).await?)
         }
     };
+    let mut conn = Connection::new(stream);
 
-    Ok(Connection::new(stream))
+    if let Some(script) = config.after_connected {
+        log::debug!("after_connected is set, run script...");
+        conn = run_script(conn, script).await?;
+    }
+    log::debug!("Connection is ready");
+
+    Ok(conn)
 }
 
 #[async_trait::async_trait]
@@ -45,3 +62,4 @@ pub trait AsyncStream: AsyncRead + AsyncWrite {
 pub type BoxAsyncStream = Box<dyn AsyncStream + Send + Sync + Unpin>;
 
 pub type Connection = BufStream<BoxAsyncStream>;
+// type ConnectionFactory = Box<dyn (Fn() -> BoxFuture<'static, Result<Connection>>) + Send + 'static>;
