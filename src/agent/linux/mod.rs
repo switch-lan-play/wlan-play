@@ -1,8 +1,8 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use super::{Agent, Executor, Stream, Packet, Device, DeviceType, AsyncStream};
 use crate::connection::Connection;
 use crate::utils::{pcap_reader::PcapReader, timeout::{TimeoutExt, DEFAULT_TIMEOUT}};
-use tokio::{io::BufReader, prelude::*, time::{sleep, Duration}};
+use tokio::{io::BufReader, prelude::*, time::{timeout, sleep, Duration}};
 use regex::Regex;
 use std::future::Future;
 use airnetwork::AirNetwork;
@@ -56,7 +56,19 @@ where
         let iw_version = self.command_match("iw --version", r"^(iw version .*)\n$").await?;
         let airserv_version = self.command_match("airserv-ng", r"(Airserv-ng\s+.*?)-").await?;
         let nc_version = self.command_match("nc -h 2>&1", r"(OpenBSD netcat.*)\n").await?;
-        log::debug!("check passed:\n{}\n{}\n{}\n{}", tcpdump_version, iw_version, airserv_version, nc_version);
+        log::debug!("version check passed:\n{}\n{}\n{}\n{}", tcpdump_version, iw_version, airserv_version, nc_version);
+
+        let mut stream = LinuxExecutor::from_factory(&self.factory)
+            .await?
+            .exec_stream("echo disconnect".as_bytes())
+            .await?;
+
+        let mut buf = String::new();
+        timeout(DEFAULT_TIMEOUT, stream.read_to_string(&mut buf))
+            .await
+            .context(anyhow!("Seems that your terminal doesn't exit when inner process exit. {}",
+                "please check your after_connected script."))??;
+
         Ok(())
     }
 
@@ -108,10 +120,10 @@ where
         // kill previous server
         self.conn.exec("killall airserv-ng").await?;
 
-        let conn = (&self.factory)().await?;
+        let serv = LinuxExecutor::from_factory(&self.factory).await?;
+
         tokio::spawn(async move {
-            let cmd = format!("airserv-ng -p 16666 -d {} -v 2 2>&1", device_name);
-            let serv = LinuxExecutor::new(conn);
+            let cmd = format!("airserv-ng -p 16666 -d {} -v 1 2>&1", device_name);
             let serv_stream = serv.exec_stream(
                 cmd.as_bytes()
             ).await?;
@@ -125,7 +137,7 @@ where
             Ok::<(), anyhow::Error>(())
         });
 
-        sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_millis(500)).await;
 
         let conn = LinuxExecutor::from_factory(&self.factory).await?;
         let stream = conn.exec_stream("nc 127.0.0.1 16666".as_bytes()).await?;
