@@ -49,8 +49,8 @@ pub async fn run_script(conn: Connection, script: String) -> Result<Connection> 
         let mut engine = Engine::new();
     
         engine
-            .on_print(|x| log::debug!("Script: {}", x))
-            .on_debug(|x| log::debug!("Script: {}", x))
+            .on_print(|x| log::debug!("{}", x))
+            .on_debug(|x| log::debug!("{}", x))
             .register_type::<ScriptConnection>()
             .register_result_fn("send", ScriptConnection::send)
             .register_result_fn("recv", ScriptConnection::recv)

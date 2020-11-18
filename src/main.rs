@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
         device_type: agent::DeviceType::Dev,
         name: config.device,
     };
-    agent.send_packets(&d, Box::new(a)).await?;
+    agent.send_packets(&d, &a).await?;
 
     Ok(())
 }

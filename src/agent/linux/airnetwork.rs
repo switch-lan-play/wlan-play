@@ -2,7 +2,7 @@
 use protocol::*;
 use deku::prelude::*;
 use tokio::prelude::*;
-use std::{io, collections::VecDeque, mem::size_of};
+use std::{io, collections::VecDeque};
 
 const HEADER_LEN: usize = 1 + 4;
 

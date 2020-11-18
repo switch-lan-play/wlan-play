@@ -87,13 +87,14 @@ where
         Ok(out)
     }
 
-    async fn capture_packets<'a>(&'a mut self, device: &Device) -> Result<Box<dyn Stream<Item=Result<Packet>> + Unpin + Send + 'a>> {
+    async fn capture_packets(&mut self, device: &Device) -> Result<Box<dyn Stream<Item=Result<Packet>> + Unpin + Send + 'static>> {
         log::trace!("capture_packets");
         match device.device_type {
             DeviceType::Dev => {
+                let conn = LinuxExecutor::from_factory(&self.factory).await?;
                 let cmd = format!("tcpdump --immediate-mode -l -w - -i {}", device.name);
                 log::debug!("cmd {}", cmd);
-                let stream = self.conn.exec_stream(cmd.as_bytes()).await?;
+                let stream = conn.exec_stream(cmd.as_bytes()).await?;
                 let reader = PcapReader::new(stream).await?;
                 return Ok(Box::new(reader));
             }
@@ -101,7 +102,7 @@ where
         }
     }
 
-    async fn send_packets<'a>(&mut self, device: &Device, _packets: Box<dyn Stream<Item=Packet> + Unpin + Send + 'a>) -> Result<()> {
+    async fn send_packets<'a>(&mut self, device: &Device, packets: &'a (dyn Stream<Item=Packet> + Unpin + Send + Sync)) -> Result<()> {
         assert_eq!(device.device_type, DeviceType::Dev);
         let device_name = device.name.clone();
         // kill previous server
@@ -110,7 +111,7 @@ where
         let conn = (&self.factory)().await?;
         tokio::spawn(async move {
             let cmd = format!("airserv-ng -p 16666 -d {} -v 2 2>&1", device_name);
-            let mut serv = LinuxExecutor::new(conn);
+            let serv = LinuxExecutor::new(conn);
             let serv_stream = serv.exec_stream(
                 cmd.as_bytes()
             ).await?;
@@ -126,7 +127,8 @@ where
 
         sleep(Duration::from_secs(1)).await;
 
-        let stream = self.conn.exec_stream("nc 127.0.0.1 16666".as_bytes()).await?;
+        let conn = LinuxExecutor::from_factory(&self.factory).await?;
+        let stream = conn.exec_stream("nc 127.0.0.1 16666".as_bytes()).await?;
         let mut air = AirNetwork::new(stream);
         air.set_channel(11).await?;
         log::trace!("Current channel: {}", air.get_channel().await?);
@@ -190,15 +192,15 @@ impl Executor for LinuxExecutor {
         Ok(result)
     }
 
-    async fn exec_stream<'a>(&'a mut self, command: &[u8]) -> Result<Box<dyn AsyncStream + Unpin + Send + 'a>> {
+    async fn exec_stream(mut self, command: &[u8]) -> Result<Box<dyn AsyncStream + Unpin + Send + 'static>> {
         self.0.write_all("echo '---start---'\n".as_bytes()).await?;
         self.0.flush().await?;
         self.assert_line("---start---").await?;
+        self.0.write_all("exec ".as_bytes()).await?;
         self.0.write_all(command).await?;
         self.0.write_all("\n".as_bytes()).await?;
         self.0.flush().await?;
 
-        // TODO: :<
-        Ok(Box::new(&mut self.0))
+        Ok(Box::new(self.0))
     }
 }
