@@ -3,10 +3,10 @@ pub use url::Url;
 pub use script::run_script;
 use serde_derive::Deserialize;
 pub use tokio::io::{AsyncRead, AsyncBufRead, AsyncWrite, BufStream};
-pub use ssh::SshConnection;
 pub use command::CommandConnection;
 
 mod command;
+#[cfg(feature = "ssh")]
 mod ssh;
 mod script;
 
@@ -31,8 +31,9 @@ pub async fn connect(config: ConnectionConfig) -> Result<Connection> {
     let stream: BoxAsyncStream = match config.method {
         ConnectionMethod::Url { url } => {
             match url.scheme() {
+                #[cfg(feature = "ssh")]
                 "ssh" => {
-                    Box::new(SshConnection::new(&url).await?)
+                    Box::new(ssh::SshConnection::new(&url).await?)
                 }
                 _ => {
                     Err(anyhow!("{} not support!", url.scheme()))?
