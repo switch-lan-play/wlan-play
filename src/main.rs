@@ -17,10 +17,10 @@ async fn main() -> Result<()> {
 
     let config: Config = from_slice(&read("config.toml").await?)?;
 
-    let mut agent = agent::from_config(&config.agent).await?;
+    // let mut agent = agent::from_config(&config.agent).await?;
 
-    let devices = agent.list_device().await?;
-    log::info!("Devices {:#?}", devices);
+    // let devices = agent.list_device().await?;
+    // log::info!("Devices {:#?}", devices);
 
     // let remote = remote_device::RemoteDevice::new(
     //     || async { agent::from_config(&config.agent).await },
