@@ -25,7 +25,13 @@ pcap-parser = "0.9.3"
 ringbuf = "0.2.2"
 byteorder = "1.3.4"
 deku = "0.9.1"
+usbip = { version = "0.3.1", optional = true }
+rusb = { version = "0.6.5", optional = true }
 
 [features]
-default = []
+default = [ "usb" ]
 ssh = [ "thrussh", "thrussh-keys" ]
+usb = [ "usbip", "rusb" ]
+
+[patch.'crates-io'.usbip]
+path = '../usbip'

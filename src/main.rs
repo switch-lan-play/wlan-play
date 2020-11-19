@@ -9,10 +9,13 @@ mod config;
 mod connection;
 mod utils;
 mod remote_device;
+mod usb;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("wlan_play=info")).init();
+
+    usb::test("148f:3070").await?;
 
     let config: Config = from_slice(&read("config.toml").await?)?;
 
