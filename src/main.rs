@@ -3,12 +3,13 @@ use toml::from_slice;
 use tokio::fs::read;
 use config::Config;
 use env_logger::Env;
+use wlan_play::WlanPlay;
 
 mod agent;
 mod config;
 mod connection;
 mod utils;
-mod remote_device;
+mod wlan_play;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -35,17 +36,14 @@ async fn main() -> Result<()> {
     //     log::trace!("Packet {:x?}", &p.data[..]);
     // }
 
-    use tokio::time;
-    use futures::stream::StreamExt;
-    let a = time::interval(time::Duration::from_secs(1))
-        .map(|_| utils::Packet {
-            data: vec![0, 1, 2, 3]
-        });
-    let d = agent::Device {
-        device_type: agent::DeviceType::Dev,
-        name: config.device,
-    };
-    agent.send_packets(&d, &a).await?;
+    let mut wlan_play = WlanPlay::new(&config).await?;
+    
+    let ns = wlan_play.find_switch().await?;
+    if ns.len() == 0 {
+        log::info!("NS not found");
+        return Ok(())
+    }
+    log::info!("Found NS: {:#?}", ns);
 
     Ok(())
 }

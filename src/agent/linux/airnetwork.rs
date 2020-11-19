@@ -80,7 +80,7 @@ where
 
         let resp = self.get().await?;
         match resp {
-            NetCmd::Packet(p) => Ok(p),
+            NetCmd::Packet(p) =>  Ok(p),
             _ => Err(io::ErrorKind::InvalidData.into())
         }
     }
@@ -103,9 +103,6 @@ where
     pub async fn get_rate(&mut self) -> io::Result<u32> {
         self.cmd(NetCmd::GetRate).await?;
         Ok(get_rc(self.get_no_packet().await?)?)
-    }
-    pub async fn close() {
-
     }
     pub async fn get_mac(&mut self) -> io::Result<[u8; 6]> {
         self.cmd(NetCmd::GetMac).await?;

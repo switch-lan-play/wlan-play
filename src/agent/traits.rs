@@ -6,7 +6,11 @@ pub use tokio::{
     stream::Stream
 };
 pub use crate::connection::AsyncStream;
-pub use crate::utils::Packet;
+
+pub struct Packet {
+    pub channel: u32,
+    pub data: Vec<u8>,
+}
 
 #[derive(Debug, PartialEq)]
 pub enum DeviceType {
@@ -36,11 +40,23 @@ pub trait Executor {
 }
 
 #[async_trait::async_trait]
+pub trait AgentDevice: Stream<Item=Result<Packet>> {
+    async fn set_channel(&mut self, channel: u32) -> Result<()>;
+    // get_channel may not work on some devices
+    async fn get_channel(&mut self) -> Result<Option<u32>>;
+    async fn send(&mut self, packet: Packet) -> Result<()>;
+    fn name(&self) -> &str;
+}
+
+pub type BoxAgentDevice = Box<dyn AgentDevice + Send + Unpin>;
+
+#[async_trait::async_trait]
 pub trait Agent {
     async fn check(&mut self) -> Result<()>;
     async fn list_device(&mut self) -> Result<Vec<Device>>;
-    async fn capture_packets(&mut self, device: &Device) -> Result<Box<dyn Stream<Item=Result<Packet>> + Unpin + Send + 'static>>;
-    async fn send_packets<'a>(&mut self, device: &Device, packets: &'a (dyn Stream<Item=Packet> + Unpin + Send + Sync)) -> Result<()>;
+    // async fn capture_packets(&mut self, device: &Device) -> Result<Box<dyn Stream<Item=Result<Packet>> + Unpin + Send + 'static>>;
+    // async fn send_packets<'a>(&mut self, device: &Device, packets: &'a (dyn Stream<Item=Packet> + Unpin + Send + Sync)) -> Result<()>;
+    async fn get_device(&mut self, device: &Device) -> Result<BoxAgentDevice>;
     fn platform(&self) -> Platform;
 }
 

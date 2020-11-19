@@ -1,13 +1,82 @@
-use anyhow::{anyhow, Context, Result};
-use super::{Agent, Executor, Stream, Packet, Device, DeviceType, AsyncStream};
+use anyhow::{anyhow, Context as _, Result};
+use super::{Agent, Executor, Stream, Packet, Device, DeviceType, AsyncStream, AgentDevice};
 use crate::connection::Connection;
 use crate::utils::{pcap_reader::PcapReader, timeout::{TimeoutExt, DEFAULT_TIMEOUT}};
 use tokio::{io::BufReader, prelude::*, time::{timeout, sleep, Duration}};
 use regex::Regex;
-use std::future::Future;
+use std::{future::Future, pin::Pin, task::{Context, Poll}};
 use airnetwork::AirNetwork;
+use futures::{pin_mut, ready};
 
 mod airnetwork;
+
+pub struct LinuxAgentDevice<S> {
+    c: AirNetwork<S>,
+    e: LinuxExecutor,
+    name: String,
+}
+
+impl<S> LinuxAgentDevice<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    fn new(name: String, s: S, e: LinuxExecutor) -> LinuxAgentDevice<S> {
+        LinuxAgentDevice {
+            c: AirNetwork::new(s),
+            e,
+            name,
+        }
+    }
+}
+
+impl<S> Stream for LinuxAgentDevice<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    type Item = Result<Packet>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        let fut = self.c.read();
+        pin_mut!(fut);
+        let p = ready!(fut.poll(cx))?;
+        Poll::Ready(Some(Ok(Packet {
+            channel: p.rx_info.channel,
+            data: p.data,
+        })))
+    }
+}
+
+#[async_trait::async_trait]
+impl<S> AgentDevice for LinuxAgentDevice<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
+    async fn set_channel(&mut self, channel: u32) -> Result<()> {
+        self.c.set_channel(channel).await?;
+        // let r = self.e.exec(&format!("iw dev {} set channel {} 2>&1", self.name, channel)).await?;
+        // log::trace!("set channel return {}", r);
+        Ok(())
+    }
+
+    async fn get_channel(&mut self) -> Result<Option<u32>> {
+        Ok(match self.c.get_channel().await? {
+            -1 => None,
+            c => Some(c as u32),
+        })
+    }
+
+    async fn send(&mut self, packet: Packet) -> Result<()> {
+        self.c.write(packet.data).await?;
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
 
 pub struct LinuxAgent<F> {
     conn: LinuxExecutor,
@@ -99,22 +168,11 @@ where
         Ok(out)
     }
 
-    async fn capture_packets(&mut self, device: &Device) -> Result<Box<dyn Stream<Item=Result<Packet>> + Unpin + Send + 'static>> {
-        log::trace!("capture_packets");
-        match device.device_type {
-            DeviceType::Dev => {
-                let conn = LinuxExecutor::from_factory(&self.factory).await?;
-                let cmd = format!("tcpdump --immediate-mode -l -w - -i {}", device.name);
-                log::debug!("cmd {}", cmd);
-                let stream = conn.exec_stream(cmd.as_bytes()).await?;
-                let reader = PcapReader::new(stream).await?;
-                return Ok(Box::new(reader));
-            }
-            _ => todo!("Device type not supported {:?}", device.device_type)
-        }
+    fn platform(&self) -> super::Platform {
+        super::Platform::Linux
     }
 
-    async fn send_packets<'a>(&mut self, device: &Device, packets: &'a (dyn Stream<Item=Packet> + Unpin + Send + Sync)) -> Result<()> {
+    async fn get_device(&mut self, device: &Device) -> Result<super::BoxAgentDevice> {
         assert_eq!(device.device_type, DeviceType::Dev);
         let device_name = device.name.clone();
         // kill previous server
@@ -141,20 +199,9 @@ where
 
         let conn = LinuxExecutor::from_factory(&self.factory).await?;
         let stream = conn.exec_stream("nc 127.0.0.1 16666".as_bytes()).await?;
-        let mut air = AirNetwork::new(stream);
-        air.set_channel(11).await?;
-        log::trace!("Current channel: {}", air.get_channel().await?);
-        log::trace!("Mac: {:x?}", air.get_mac().await?);
-        log::trace!("Monitor: {}", air.get_monitor().await?);
-        // loop {
-        //     let pkt = air.read().await?;
-        //     log::trace!("{:#?} {:x?}", &pkt.rx_info, &pkt.data[..10]);
-        // }
-        todo!()
-    }
+        let conn = LinuxExecutor::from_factory(&self.factory).await?;
 
-    fn platform(&self) -> super::Platform {
-        super::Platform::Linux
+        Ok(Box::new(LinuxAgentDevice::new(device.name.clone(), stream, conn)))
     }
 }
 
