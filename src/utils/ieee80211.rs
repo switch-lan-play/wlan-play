@@ -1,4 +1,4 @@
-use deku::ctx::{Endian, BitSize};
+use deku::ctx::BitSize;
 use deku::prelude::*;
 use std::fmt;
 
@@ -71,9 +71,9 @@ pub struct Frame {
     // pub ht_control: Option<u32>,
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
-    use deku::prelude::*;
 
     #[test]
     fn test_control_frame() {

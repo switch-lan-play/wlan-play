@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context as _, Result};
 use super::{Agent, Executor, Stream, Packet, Device, DeviceType, AsyncStream, AgentDevice};
 use crate::connection::Connection;
-use crate::utils::{pcap_reader::PcapReader, timeout::{TimeoutExt, DEFAULT_TIMEOUT}};
+use crate::utils::{timeout::{TimeoutExt, DEFAULT_TIMEOUT}};
 use tokio::{io::BufReader, prelude::*, time::{timeout, sleep, Duration}};
 use regex::Regex;
 use std::{future::Future, pin::Pin, task::{Context, Poll}};
@@ -12,7 +12,6 @@ mod airnetwork;
 
 pub struct LinuxAgentDevice<S> {
     c: AirNetwork<S>,
-    e: LinuxExecutor,
     name: String,
 }
 
@@ -20,10 +19,9 @@ impl<S> LinuxAgentDevice<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    fn new(name: String, s: S, e: LinuxExecutor) -> LinuxAgentDevice<S> {
+    fn new(name: String, s: S) -> LinuxAgentDevice<S> {
         LinuxAgentDevice {
             c: AirNetwork::new(s),
-            e,
             name,
         }
     }
@@ -199,9 +197,8 @@ where
 
         let conn = LinuxExecutor::from_factory(&self.factory).await?;
         let stream = conn.exec_stream("nc 127.0.0.1 16666".as_bytes()).await?;
-        let conn = LinuxExecutor::from_factory(&self.factory).await?;
 
-        Ok(Box::new(LinuxAgentDevice::new(device.name.clone(), stream, conn)))
+        Ok(Box::new(LinuxAgentDevice::new(device.name.clone(), stream)))
     }
 }
 
@@ -245,8 +242,10 @@ impl Executor for LinuxExecutor {
         let result = self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"---end---\n"[..]).await?;
         let retcode = String::from_utf8(self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"\n"[..]).await?)?;
         let retcode = retcode.trim().parse::<u8>()?;
-        log::trace!("retcode {:?}", retcode);
-        // TODO: return retcode in some way
+        if retcode != 0 {
+            // TODO: return retcode in some way
+            log::warn!("{} retcode {:?}", String::from_utf8_lossy(command), retcode);
+        }
 
         Ok(result)
     }

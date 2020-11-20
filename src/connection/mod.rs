@@ -48,7 +48,6 @@ pub async fn connect(config: ConnectionConfig) -> Result<Connection> {
     let mut conn = Connection::new(stream);
 
     if let Some(script) = config.after_connected {
-        log::debug!("after_connected is set, run script...");
         conn = run_script(conn, script).await?;
     }
     log::debug!("Connection is ready");
