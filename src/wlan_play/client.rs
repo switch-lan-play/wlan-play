@@ -10,7 +10,13 @@ use tokio::select;
 use futures::stream::TryStreamExt;
 
 fn parse_ieee80211(data: &[u8]) -> Result<(ieee80211::Frame, &[u8])> {
-    let ((body, _), frame) = Frame::from_bytes((data, 0))?;
+    let ((body, _), frame) = match Frame::from_bytes((data, 0)) {
+        Ok(r) => r,
+        Err(e) => {
+            log::trace!("IEEE80211 parse {:02x?}", data);
+            return Err(e.into());
+        }
+    };
     Ok((frame, body))
 }
 
@@ -228,8 +234,7 @@ async fn station_main(client: Client, mut wlan_play: WlanPlay) -> Result<()> {
                     stations.insert(frame.addr2.as_ref().unwrap().clone());
                 }
                 if let Some(true) = frame.addr2.as_ref().map(|src| stations.contains(src)) {
-                    log::trace!("send {:?}", p.channel);
-                    wlan_play.dev.send(Packet {
+                    client.send(protocol::FrameBody::Data {
                         channel: p.channel,
                         data: p.data,
                     }).await?;
