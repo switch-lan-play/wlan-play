@@ -27,5 +27,5 @@ pub struct Config {
 pub struct ServerOpt {
     /// Listening port
     #[structopt(short, long, default_value = "19198")]
-    port: u16,
+    pub port: u16,
 }
