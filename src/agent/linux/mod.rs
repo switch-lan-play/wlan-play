@@ -1,11 +1,11 @@
 use anyhow::{anyhow, Context as _, Result};
 use super::{Agent, Executor, Stream, Packet, Device, DeviceType, AsyncStream, AgentDevice, Filter};
 use crate::connection::Connection;
-use crate::utils::{timeout::{TimeoutExt, DEFAULT_TIMEOUT}};
+use crate::utils::timeout::{TimeoutExt, DEFAULT_TIMEOUT};
 use tokio::{io::BufReader, prelude::*, time::{timeout, sleep, Duration}};
 use regex::Regex;
 use std::{future::Future, pin::Pin, task::{Context, Poll}};
-use airnetwork::AirNetwork;
+use airnetwork::{AirNetwork, TxPacket};
 use futures::{pin_mut, ready};
 
 mod airnetwork;
@@ -76,7 +76,14 @@ where
     }
 
     async fn send(&mut self, packet: Packet) -> Result<()> {
-        self.c.write(packet.data).await?;
+        let pkt_len = packet.data.len();
+        let written = self.c.write(TxPacket {
+            data: packet.data,
+            ..Default::default()
+        }).await?;
+        if (written != pkt_len) {
+            log::warn!("send it not successed, sent: {}, packet: {}", written, pkt_len);
+        }
         Ok(())
     }
 
@@ -200,9 +207,12 @@ where
             loop {
                 let mut line = String::new();
                 s.read_line(&mut line).await?;
+                if line.len() == 0 {
+                    break;
+                }
                 log::trace!("serv log {}", line.trim_end());
             }
-            #[allow(unreachable_code)]
+            log::error!("serv exited");
             Ok::<(), anyhow::Error>(())
         });
 

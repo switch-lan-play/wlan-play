@@ -1,10 +1,11 @@
 use anyhow::Result;
 use crate::config::{Config, Mode};
-use crate::agent::{self, Device, DeviceType, BoxAgentDevice};
+use crate::agent::{self, Device, DeviceType, BoxAgentDevice, Packet};
 use crate::utils::ieee80211::{Frame, FrameType, Mac};
 use deku::prelude::*;
-use tokio::{stream::StreamExt, time::{timeout, Duration}};
-use std::collections::HashMap;
+use tokio::{stream::StreamExt, time::{timeout, Duration}, net::UdpSocket};
+use std::{collections::HashMap, net::SocketAddr};
+use super::protocol;
 
 pub struct WlanPlay {
     dev: BoxAgentDevice,
@@ -88,8 +89,36 @@ impl WlanPlay {
     }
 }
 
+struct Client {
+    s: UdpSocket,
+}
+
+impl Client {
+    async fn connect(addr: SocketAddr) -> Result<Client> {
+        let s = UdpSocket::bind("0.0.0.0:0").await?;
+        s.connect(addr).await?;
+        Ok(Client {
+            s,
+        })
+    }
+    async fn recv(&self) -> Result<protocol::FrameBody> {
+        let mut buf = [0u8; 2048];
+        let len = self.s.recv(&mut buf).await?;
+        let buf = &buf[..len];
+        let (_, frame) = protocol::Frame::from_bytes((buf, 0))?;
+        Ok(frame.body)
+    }
+    async fn send(&self, frame: protocol::FrameBody) -> Result<()> {
+        let frame: protocol::Frame = frame.into();
+        let bytes = frame.to_bytes()?;
+        self.s.send(&bytes).await?;
+        Ok(())
+    }
+}
+
 pub async fn main(config: Config) -> Result<()> {
     let mut wlan_play = WlanPlay::new(&config).await?;
+    let client = Client::connect(config.server).await?;
 
     match config.mode {
         Mode::Host => {
@@ -101,12 +130,28 @@ pub async fn main(config: Config) -> Result<()> {
             log::info!("Found NS: {:#?}", ns);
             let sta = ns.values().next().unwrap();
             wlan_play.set_station(sta.clone()).await?;
-            
+
             while let Some(p) = wlan_play.dev.try_next().await? {
-                log::trace!("p {:02x?}", &p.data[0..8]);
+                client.send(protocol::FrameBody::Data {
+                    channel: p.channel,
+                    data: p.data,
+                }).await?;
             }
         },
         Mode::Station => {
+            use protocol::FrameBody;
+            client.send(FrameBody::Keepalive).await?;
+            while let Ok(p) = client.recv().await {
+                match p {
+                    FrameBody::Keepalive => {}
+                    FrameBody::Data { channel, data } => {
+                        wlan_play.dev.send(Packet {
+                            channel,
+                            data,
+                        }).await?;
+                    }
+                };
+            }
             todo!()
         }
     };
