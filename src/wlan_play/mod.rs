@@ -29,7 +29,7 @@ impl WlanPlay {
         })
     }
     pub async fn find_switch(&mut self) -> Result<HashSet<Station>> {
-        let list = [1u32, 6, 11, 1, 6, 11];
+        let list = [1u32, 6, 11];
         let mut set = HashSet::<Station>::new();
         for i in list.iter() {
             log::trace!("Scanning channel {}", i);

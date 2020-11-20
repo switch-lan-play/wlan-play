@@ -1,2 +1,15 @@
+device = "wlan1mon"
+mode = "Host"
+
 [agent]
-url = "ssh://username:password@host/bash"
+platform = "Linux"
+command = ["ssh", "rpi", "bash"]
+after_connected = """
+conn.send("exec sudo -s\\n");
+conn.send("whoami\\n");
+let id = conn.read_line();
+debug("login as: " + id);
+if id != "root\\n" {
+    throw "not root";
+}
+"""

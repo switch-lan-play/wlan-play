@@ -1,8 +1,16 @@
 use deku::ctx::{Endian, BitSize};
 use deku::prelude::*;
+use std::fmt;
 
-pub type Mac = [u8; 6];
+#[derive(DekuRead, DekuWrite, Eq, PartialEq, Hash)]
+pub struct Mac([u8; 6]);
 
+impl fmt::Debug for Mac {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let m = &self.0;
+        write!(f, "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", m[0], m[1], m[2], m[3], m[4], m[5])
+    }
+}
 
 #[derive(Debug, DekuRead, DekuWrite, PartialEq)]
 #[deku(type = "u8", bits = "2", ctx = "_bitsize: BitSize")]
