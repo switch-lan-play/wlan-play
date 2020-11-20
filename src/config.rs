@@ -1,6 +1,6 @@
 use serde_derive::Deserialize;
 use crate::agent::AgentConfig;
-
+use structopt::StructOpt;
 
 #[derive(Deserialize, Debug)]
 pub enum Mode {
@@ -16,4 +16,13 @@ pub struct Config {
     pub device: String,
     /// host or station mode
     pub mode: Mode,
+}
+
+
+#[derive(Debug, StructOpt)]
+#[structopt(about = "A server for wlan_play")]
+pub struct ServerOpt {
+    /// Listening port
+    #[structopt(short, long, default_value = "19198")]
+    port: u16,
 }
