@@ -28,6 +28,10 @@ pub struct ClientOpt {
     /// Listening port
     #[structopt(short, long, default_value = "config.toml", parse(from_os_str))]
     pub cfg: PathBuf,
+
+    /// Write packets to pcap file
+    #[structopt(short, long, parse(from_os_str))]
+    pub pcap: Option<PathBuf>,
 }
 
 #[derive(Debug, StructOpt)]

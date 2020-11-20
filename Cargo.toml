@@ -25,6 +25,7 @@ futures = "0.3"
 regex = "1.4.2"
 deku = "0.9.1"
 structopt = "0.3.20"
+hex = "0.4.2"
 
 [features]
 default = []
