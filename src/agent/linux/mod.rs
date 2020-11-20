@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context as _, Result};
-use super::{Agent, Executor, Stream, Packet, Device, DeviceType, AsyncStream, AgentDevice};
+use super::{Agent, Executor, Stream, Packet, Device, DeviceType, AsyncStream, AgentDevice, Filter};
 use crate::connection::Connection;
 use crate::utils::{timeout::{TimeoutExt, DEFAULT_TIMEOUT}};
 use tokio::{io::BufReader, prelude::*, time::{timeout, sleep, Duration}};
@@ -13,6 +13,7 @@ mod airnetwork;
 pub struct LinuxAgentDevice<S> {
     c: AirNetwork<S>,
     name: String,
+    filter: Option<Filter>,
 }
 
 impl<S> LinuxAgentDevice<S>
@@ -23,6 +24,7 @@ where
         LinuxAgentDevice {
             c: AirNetwork::new(s),
             name,
+            filter: None,
         }
     }
 }
@@ -37,13 +39,22 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Self::Item>> {
-        let fut = self.c.read();
-        pin_mut!(fut);
-        let p = ready!(fut.poll(cx))?;
-        Poll::Ready(Some(Ok(Packet {
-            channel: p.rx_info.channel,
-            data: p.data,
-        })))
+        loop {
+            let p = {
+                let fut = self.c.read();
+                pin_mut!(fut);
+                ready!(fut.poll(cx))?
+            };
+            let pkt = Packet {
+                channel: p.rx_info.channel,
+                data: p.data,
+            };
+            if let Some(true) = self.filter.as_ref().map(|f| f(&pkt)) {
+                // drop
+                continue
+            }
+            return Poll::Ready(Some(Ok(pkt)))
+        }
     }
 }
 
@@ -54,8 +65,6 @@ where
 {
     async fn set_channel(&mut self, channel: u32) -> Result<()> {
         self.c.set_channel(channel).await?;
-        // let r = self.e.exec(&format!("iw dev {} set channel {} 2>&1", self.name, channel)).await?;
-        // log::trace!("set channel return {}", r);
         Ok(())
     }
 
@@ -73,6 +82,10 @@ where
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+    async fn set_filter(&mut self, filter: Option<super::Filter>) -> Result<Option<super::Filter>> {
+        Ok(std::mem::replace(&mut self.filter, filter))
     }
 }
 

@@ -7,6 +7,7 @@ pub use tokio::{
 };
 pub use crate::connection::AsyncStream;
 
+#[derive(Debug)]
 pub struct Packet {
     pub channel: u32,
     pub data: Vec<u8>,
@@ -39,12 +40,16 @@ pub trait Executor {
     async fn exec_stream(self, command: &[u8]) -> Result<Box<dyn AsyncStream + Unpin + Send + 'static>>;
 }
 
+pub type Filter = Box<dyn Fn(&Packet) -> bool + Send>;
+
 #[async_trait::async_trait]
 pub trait AgentDevice: Stream<Item=Result<Packet>> {
     async fn set_channel(&mut self, channel: u32) -> Result<()>;
     // get_channel may not work on some devices
     async fn get_channel(&mut self) -> Result<Option<u32>>;
     async fn send(&mut self, packet: Packet) -> Result<()>;
+    // drop packet when filter return true
+    async fn set_filter(&mut self, filter: Option<Filter>) -> Result<Option<Filter>>;
     fn name(&self) -> &str;
 }
 

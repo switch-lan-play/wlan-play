@@ -2,7 +2,7 @@ use deku::ctx::BitSize;
 use deku::prelude::*;
 use std::fmt;
 
-#[derive(DekuRead, DekuWrite, Eq, PartialEq, Hash)]
+#[derive(DekuRead, DekuWrite, Eq, PartialEq, Hash, Clone)]
 pub struct Mac([u8; 6]);
 
 impl fmt::Debug for Mac {

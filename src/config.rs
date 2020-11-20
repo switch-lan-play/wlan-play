@@ -1,6 +1,7 @@
 use serde_derive::Deserialize;
 use crate::agent::AgentConfig;
 use structopt::StructOpt;
+use std::net::SocketAddr;
 
 #[derive(Deserialize, Debug)]
 pub enum Mode {
@@ -16,6 +17,8 @@ pub struct Config {
     pub device: String,
     /// host or station mode
     pub mode: Mode,
+    /// server address:port
+    pub server: SocketAddr,
 }
 
 

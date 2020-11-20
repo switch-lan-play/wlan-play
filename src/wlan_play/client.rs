@@ -4,13 +4,13 @@ use crate::agent::{self, Device, DeviceType, BoxAgentDevice};
 use crate::utils::ieee80211::{Frame, FrameType, Mac};
 use deku::prelude::*;
 use tokio::{stream::StreamExt, time::{timeout, Duration}};
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 pub struct WlanPlay {
     dev: BoxAgentDevice,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct Station {
     pub channel: u32,
     pub mac: Mac,
@@ -28,14 +28,14 @@ impl WlanPlay {
             dev,
         })
     }
-    pub async fn find_switch(&mut self) -> Result<HashSet<Station>> {
+    pub async fn find_switch(&mut self) -> Result<HashMap<Mac, Station>> {
         let list = [1u32, 6, 11];
-        let mut set = HashSet::<Station>::new();
+        let mut set = HashMap::new();
         for i in list.iter() {
             log::trace!("Scanning channel {}", i);
             self.dev.set_channel(*i).await?;
             match timeout(
-                Duration::from_secs(1),
+                Duration::from_millis(500),
                 self.find_switch_packet(&mut set)).await
             {
                 Ok(f) => f?,
@@ -44,7 +44,7 @@ impl WlanPlay {
         }
         Ok(set)
     }
-    async fn find_switch_packet(&mut self, set: &mut HashSet<Station>) -> Result<()> {
+    async fn find_switch_packet(&mut self, set: &mut HashMap<Mac, Station>) -> Result<()> {
         while let Some(p) = self.dev.try_next().await? {
             let ((rest, _), frame) = Frame::from_bytes((&p.data, 0))?;
             let (frame_type, sub_type) = (&frame.frame_control.frame_type, &frame.frame_control.sub_type);
@@ -54,15 +54,36 @@ impl WlanPlay {
                     if rest[0] == 0x7f && rest[1..4] == [0, 0x22, 0xaa] {
                         // log::trace!("action {} {:x?}, {:x?}", p.channel, frame, &rest[0..4]);
                         // return Ok(Some((p.channel, frame.addr2.unwrap())));
-                        set.insert(Station {
+                        let addr = frame.addr2.unwrap();
+                        set.insert(addr.clone(), Station {
                             channel: p.channel,
-                            mac: frame.addr2.unwrap()
+                            mac: addr
                         });
                     }
                 }
                 _ => {}
             }
         }
+        Ok(())
+    }
+    async fn set_station(&mut self, station: Station) -> Result<()> {
+        self.dev.set_channel(station.channel).await?;
+        self.dev.set_filter(Some(Box::new(move |p| {
+            let (_, frame) = match Frame::from_bytes((&p.data, 0)) {
+                Ok(r) => r,
+                Err(_) => return true,
+            };
+            if station.mac == frame.addr1 {
+                return false
+            }
+            if let Some(true) = frame.addr2.map(|k| station.mac == k) {
+                return false
+            }
+            if let Some(true) = frame.addr3.map(|k| station.mac == k) {
+                return false
+            }
+            true
+        }))).await?;
         Ok(())
     }
 }
@@ -78,6 +99,12 @@ pub async fn main(config: Config) -> Result<()> {
                 return Ok(())
             }
             log::info!("Found NS: {:#?}", ns);
+            let sta = ns.values().next().unwrap();
+            wlan_play.set_station(sta.clone()).await?;
+            
+            while let Some(p) = wlan_play.dev.try_next().await? {
+                log::trace!("p {:02x?}", &p.data[0..8]);
+            }
         },
         Mode::Station => {
             todo!()
