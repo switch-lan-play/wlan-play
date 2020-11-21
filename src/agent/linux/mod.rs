@@ -136,14 +136,10 @@ where
 {
     async fn check(&mut self) -> Result<()> {
         log::trace!("check");
-        let tcpdump_version = self.command_match(
-            "tcpdump --version 2>&1",
-            r"^(tcpdump version .*\nlibpcap version .*\nOpenSSL .*)\n$"
-        ).await?;
         let iw_version = self.command_match("iw --version", r"^(iw version .*)\n$").await?;
         let airserv_version = self.command_match("airserv-ng", r"(Airserv-ng\s+.*?)-").await?;
         let nc_version = self.command_match("nc -h 2>&1", r"(OpenBSD netcat.*)\n").await?;
-        log::debug!("version check passed:\n{}\n{}\n{}\n{}", tcpdump_version, iw_version, airserv_version, nc_version);
+        log::debug!("version check passed:\n{}\n{}\n{}", iw_version, airserv_version, nc_version);
 
         let mut stream = LinuxExecutor::from_factory(&self.factory)
             .await?
