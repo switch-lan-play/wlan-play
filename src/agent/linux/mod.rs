@@ -138,7 +138,7 @@ where
         log::trace!("check");
         // let iw_version = self.command_match("iw --version", r"^(iw version .*)\n$").await?;
         let airserv_version = self.command_match("airserv-ng", r"(Airserv-ng\s+.*?)-").await?;
-        let nc_version = self.command_match("nc -h 2>&1", r"(OpenBSD netcat.*)|(GNU netcat .*)|(BusyBox.*)\n").await?;
+        let nc_version = self.command_match("nc -h 2>&1", r"((OpenBSD netcat.*)|(GNU netcat .*)|(BusyBox.*))\n").await?;
         log::debug!("version check passed:\n{}\n{}", airserv_version, nc_version);
 
         let mut stream = LinuxExecutor::from_factory(&self.factory)
