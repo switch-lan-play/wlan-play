@@ -208,6 +208,7 @@ async fn station_main(client: Client, mut wlan_play: WlanPlay) -> Result<()> {
     use protocol::FrameBody;
     client.send(FrameBody::Keepalive).await?;
 
+    let mut channel_has_set = false;
     let mut ssids = HashSet::<String>::new();
     let mut stations = HashSet::<Mac>::new();
 
@@ -217,6 +218,11 @@ async fn station_main(client: Client, mut wlan_play: WlanPlay) -> Result<()> {
                 match cr? {
                     FrameBody::Keepalive => {}
                     FrameBody::Data { channel, data } => {
+                        if !channel_has_set {
+                            log::info!("Set channel to {}", channel);
+                            wlan_play.dev.set_channel(channel).await?;
+                            channel_has_set = true;
+                        }
                         if let Some(ssid) = get_action_ssid(&data) {
                             ssids.insert(ssid);
                         }
