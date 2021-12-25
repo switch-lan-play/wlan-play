@@ -1,5 +1,6 @@
 device = "wlan1mon"
 mode = "Host"
+server = "127.0.0.1:56561"
 
 [agent]
 platform = "Linux"
