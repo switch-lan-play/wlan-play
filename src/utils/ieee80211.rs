@@ -1,4 +1,3 @@
-use deku::ctx::BitSize;
 use deku::prelude::*;
 use std::fmt;
 
@@ -8,18 +7,22 @@ pub struct Mac([u8; 6]);
 impl fmt::Debug for Mac {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let m = &self.0;
-        write!(f, "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", m[0], m[1], m[2], m[3], m[4], m[5])
+        write!(
+            f,
+            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            m[0], m[1], m[2], m[3], m[4], m[5]
+        )
     }
 }
 
 #[derive(Debug, DekuRead, DekuWrite, PartialEq)]
-#[deku(type = "u8", bits = "2", ctx = "_bitsize: BitSize")]
+#[deku(type = "u8", bits = "2")]
 pub enum FrameType {
-    #[deku(id = "0")]
+    #[deku(id = "0b00")]
     Management,
-    #[deku(id = "1")]
+    #[deku(id = "0b01")]
     Control,
-    #[deku(id = "2")]
+    #[deku(id = "0b10")]
     Data,
 }
 
@@ -47,7 +50,7 @@ pub struct Flags {
 pub struct FrameControl {
     #[deku(bits = 4)]
     pub sub_type: u8,
-    #[deku(bits = 2)]
+    #[deku]
     pub frame_type: FrameType,
     #[deku(bits = 2)]
     pub protocol_version: u8,
@@ -80,22 +83,25 @@ mod tests {
         let data = vec![0x88u8, 0x41];
         let (_, control_frame) = FrameControl::from_bytes((data.as_ref(), 0)).unwrap();
         println!("{:#?}", control_frame);
-        assert_eq!(control_frame, FrameControl {
-            protocol_version: 0,
-            frame_type: FrameType::Data,
-            sub_type: 8,
+        assert_eq!(
+            control_frame,
+            FrameControl {
+                protocol_version: 0,
+                frame_type: FrameType::Data,
+                sub_type: 8,
 
-            flags: Flags {
-                to_ds: 1,
-                from_ds: 0,
-                more_fragments: 0,
-                retry: 0,
-                power_management: 0,
-                more_data: 0,
-                protected_frame: 1,
-                order: 0,
+                flags: Flags {
+                    to_ds: 1,
+                    from_ds: 0,
+                    more_fragments: 0,
+                    retry: 0,
+                    power_management: 0,
+                    more_data: 0,
+                    protected_frame: 1,
+                    order: 0,
+                }
             }
-        })
+        )
     }
 
     #[test]
@@ -105,16 +111,17 @@ mod tests {
         println!("{:#x?}", frame);
 
         let data = vec![
-            0x08u8, 0x42, 0x00, 0x00, 0x33, 0x33, 0x00, 0x00, 0x01, 0x8c, 0x2c, 0xf8, 0x9b, 0xdd, 0x06, 0xa0,
-            0x2c, 0xf8, 0x9b, 0x15, 0xa3, 0xd0, 0x20, 0x1e, 0x0a, 0x05, 0x00, 0x60, 0x00, 0x00, 0x00, 0x00,
+            0x08u8, 0x42, 0x00, 0x00, 0x33, 0x33, 0x00, 0x00, 0x01, 0x8c, 0x2c, 0xf8, 0x9b, 0xdd,
+            0x06, 0xa0, 0x2c, 0xf8, 0x9b, 0x15, 0xa3, 0xd0, 0x20, 0x1e, 0x0a, 0x05, 0x00, 0x60,
+            0x00, 0x00, 0x00, 0x00,
         ];
         let (_, frame) = Frame::from_bytes((data.as_ref(), 0)).unwrap();
         println!("{:#x?}", frame);
 
         let data = vec![
-            0x88, 0x41, 0x3a, 0x00, 0x2c, 0xf8, 0x9b, 0xdd, 0x06, 0xa0, 0x00, 0x20, 0xa6, 0xfc, 0xb0, 0x36,
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x20, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x20, 0x00, 0x00,
-            0x00, 0x00
+            0x88, 0x41, 0x3a, 0x00, 0x2c, 0xf8, 0x9b, 0xdd, 0x06, 0xa0, 0x00, 0x20, 0xa6, 0xfc,
+            0xb0, 0x36, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x20, 0x00, 0x00, 0x00, 0x03, 0x00,
+            0x00, 0x20, 0x00, 0x00, 0x00, 0x00,
         ];
         let (_, frame) = Frame::from_bytes((data.as_ref(), 0)).unwrap();
         println!("{:#x?}", frame);

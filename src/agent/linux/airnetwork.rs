@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
-use protocol::*;
 use deku::prelude::*;
-use tokio::prelude::*;
-use std::{io, collections::VecDeque};
-pub use protocol::{TxPacket, TxInfo, RxInfo, RxPacket};
+use protocol::*;
+pub use protocol::{RxInfo, RxPacket, TxInfo, TxPacket};
+use std::{collections::VecDeque, io};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 const HEADER_LEN: usize = 1 + 4;
 
@@ -14,8 +14,8 @@ fn other<E: std::error::Error + Send + Sync + 'static>(err: E) -> io::Error {
 
 fn get_rc(cmd: NetCmd) -> io::Result<u32> {
     match cmd {
-        NetCmd::Rc(rc) => { Ok(rc) },
-        _ => Err(io::ErrorKind::InvalidData.into())
+        NetCmd::Rc(rc) => Ok(rc),
+        _ => Err(io::ErrorKind::InvalidData.into()),
     }
 }
 
@@ -48,7 +48,7 @@ where
     async fn cmd(&mut self, cmd: NetCmd) -> io::Result<()> {
         let frame: NetCmdFrame = cmd.into();
         let bytes = frame.to_bytes().unwrap();
-        
+
         self.s.write_all(&bytes).await?;
         self.s.flush().await
     }
@@ -67,9 +67,7 @@ where
     async fn get_no_packet(&mut self) -> io::Result<NetCmd> {
         loop {
             let p = match self.get().await? {
-                NetCmd::Packet(p) => {
-                    p
-                },
+                NetCmd::Packet(p) => p,
                 p @ _ => return Ok(p),
             };
             self.queue.push_back(p);
@@ -77,13 +75,13 @@ where
     }
     pub async fn read(&mut self) -> io::Result<RxPacket> {
         if let Some(i) = self.queue.pop_front() {
-            return Ok(i)
+            return Ok(i);
         }
 
         let resp = self.get().await?;
         match resp {
-            NetCmd::Packet(p) =>  Ok(p),
-            _ => Err(io::ErrorKind::InvalidData.into())
+            NetCmd::Packet(p) => Ok(p),
+            _ => Err(io::ErrorKind::InvalidData.into()),
         }
     }
     pub async fn write(&mut self, data: TxPacket) -> io::Result<usize> {
@@ -95,7 +93,7 @@ where
         self.cmd(NetCmd::SetChan(channel)).await?;
         rc(self.get_no_packet().await?)
     }
-    pub async fn get_channel(&mut self) -> io::Result<i32>{
+    pub async fn get_channel(&mut self) -> io::Result<i32> {
         self.cmd(NetCmd::GetChan).await?;
         Ok(get_rc(self.get_no_packet().await?)? as i32)
     }
@@ -110,10 +108,8 @@ where
     pub async fn get_mac(&mut self) -> io::Result<[u8; 6]> {
         self.cmd(NetCmd::GetMac).await?;
         match self.get_no_packet().await? {
-            NetCmd::Mac(mac) => {
-                Ok(mac)
-            }
-            _ => Err(io::ErrorKind::InvalidData.into())
+            NetCmd::Mac(mac) => Ok(mac),
+            _ => Err(io::ErrorKind::InvalidData.into()),
         }
     }
     pub async fn get_monitor(&mut self) -> io::Result<u32> {
@@ -204,8 +200,12 @@ mod protocol {
                 NetCmd::Rc(_) => (1, 4),
                 NetCmd::GetChan => (2, 0),
                 NetCmd::SetChan(_) => (3, 4),
-                NetCmd::Write(TxPacket{ data, .. }) => (4, (size_of::<TxInfo>() + data.len()) as u32),
-                NetCmd::Packet(RxPacket{ data, ..}) => (5, (size_of::<RxInfo>() + data.len()) as u32),
+                NetCmd::Write(TxPacket { data, .. }) => {
+                    (4, (size_of::<TxInfo>() + data.len()) as u32)
+                }
+                NetCmd::Packet(RxPacket { data, .. }) => {
+                    (5, (size_of::<RxInfo>() + data.len()) as u32)
+                }
                 NetCmd::GetMac => (6, 0),
                 NetCmd::Mac(_) => (7, 6),
                 NetCmd::GetMonitor => (8, 0),
@@ -232,22 +232,29 @@ mod protocol {
     #[test]
     fn test_parse_net_cmd() {
         let (_, cmd) = NetCmdFrame::from_bytes((&[3u8, 0, 0, 0, 4, 0, 0, 0, 1], 0)).unwrap();
-        assert_eq!(cmd, NetCmdFrame {
-            cmd: 3,
-            len: 4,
-            body: NetCmd::SetChan(1),
-        });
+        assert_eq!(
+            cmd,
+            NetCmdFrame {
+                cmd: 3,
+                len: 4,
+                body: NetCmd::SetChan(1),
+            }
+        );
     }
-    
+
     #[test]
     fn test_generate_net_cmd() {
         let data = Into::<NetCmdFrame>::into(NetCmd::Rc(1)).to_bytes().unwrap();
         assert_eq!(data, &[1u8, 0, 0, 0, 4, 0, 0, 0, 1]);
 
-        let data = Into::<NetCmdFrame>::into(NetCmd::GetChan).to_bytes().unwrap();
+        let data = Into::<NetCmdFrame>::into(NetCmd::GetChan)
+            .to_bytes()
+            .unwrap();
         assert_eq!(data, &[2u8, 0, 0, 0, 0]);
 
-        let data = Into::<NetCmdFrame>::into(NetCmd::SetChan(1)).to_bytes().unwrap();
+        let data = Into::<NetCmdFrame>::into(NetCmd::SetChan(1))
+            .to_bytes()
+            .unwrap();
         assert_eq!(data, &[3u8, 0, 0, 0, 4, 0, 0, 0, 1]);
 
         // let data = Into::<NetCmdFrame>::into(NetCmd::Write(vec![66])).to_bytes().unwrap();
@@ -256,20 +263,29 @@ mod protocol {
         // let data = Into::<NetCmdFrame>::into(NetCmd::Packet(vec![66])).to_bytes().unwrap();
         // assert_eq!(data, &[5u8, 0, 0, 0, 1, 66]);
 
-        let data = Into::<NetCmdFrame>::into(NetCmd::GetMac).to_bytes().unwrap();
+        let data = Into::<NetCmdFrame>::into(NetCmd::GetMac)
+            .to_bytes()
+            .unwrap();
         assert_eq!(data, &[6u8, 0, 0, 0, 0]);
 
-        let data = Into::<NetCmdFrame>::into(NetCmd::Mac([1, 2, 3, 4, 5, 6])).to_bytes().unwrap();
+        let data = Into::<NetCmdFrame>::into(NetCmd::Mac([1, 2, 3, 4, 5, 6]))
+            .to_bytes()
+            .unwrap();
         assert_eq!(data, &[7u8, 0, 0, 0, 6, 1, 2, 3, 4, 5, 6]);
 
-        let data = Into::<NetCmdFrame>::into(NetCmd::GetMonitor).to_bytes().unwrap();
+        let data = Into::<NetCmdFrame>::into(NetCmd::GetMonitor)
+            .to_bytes()
+            .unwrap();
         assert_eq!(data, &[8u8, 0, 0, 0, 0]);
 
-        let data = Into::<NetCmdFrame>::into(NetCmd::GetRate).to_bytes().unwrap();
+        let data = Into::<NetCmdFrame>::into(NetCmd::GetRate)
+            .to_bytes()
+            .unwrap();
         assert_eq!(data, &[9u8, 0, 0, 0, 0]);
 
-        let data = Into::<NetCmdFrame>::into(NetCmd::SetRate(55)).to_bytes().unwrap();
+        let data = Into::<NetCmdFrame>::into(NetCmd::SetRate(55))
+            .to_bytes()
+            .unwrap();
         assert_eq!(data, &[10u8, 0, 0, 0, 4, 0, 0, 0, 55]);
-
     }
 }

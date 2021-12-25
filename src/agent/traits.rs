@@ -1,11 +1,11 @@
-use anyhow::Result;
 use super::Platform;
-pub use tokio::{
-    io::{self, AsyncRead, AsyncBufRead, AsyncBufReadExt, AsyncWrite},
-    time::{timeout, Duration},
-    stream::Stream
-};
 pub use crate::connection::AsyncStream;
+use anyhow::Result;
+pub use futures::Stream;
+pub use tokio::{
+    io::{self, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite},
+    time::{timeout, Duration},
+};
 
 #[derive(Debug)]
 pub struct Packet {
@@ -32,18 +32,23 @@ pub trait Executor {
     /// Execute command string
     async fn exec(&mut self, command: &str) -> Result<String>
     where
-        Self: Sized
+        Self: Sized,
     {
-        Ok(String::from_utf8(self.exec_bytes(command.as_bytes()).await?)?)
+        Ok(String::from_utf8(
+            self.exec_bytes(command.as_bytes()).await?,
+        )?)
     }
     /// For infinite output
-    async fn exec_stream(self, command: &[u8]) -> Result<Box<dyn AsyncStream + Unpin + Send + 'static>>;
+    async fn exec_stream(
+        self,
+        command: &[u8],
+    ) -> Result<Box<dyn AsyncStream + Unpin + Send + 'static>>;
 }
 
 pub type Filter = Box<dyn Fn(&Packet) -> bool + Send>;
 
 #[async_trait::async_trait]
-pub trait AgentDevice: Stream<Item=Result<Packet>> {
+pub trait AgentDevice: Stream<Item = Result<Packet>> {
     async fn set_channel(&mut self, channel: u32) -> Result<()>;
     // get_channel may not work on some devices
     async fn get_channel(&mut self) -> Result<Option<u32>>;

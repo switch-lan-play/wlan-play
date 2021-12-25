@@ -1,12 +1,21 @@
-use anyhow::{anyhow, Context as _, Result};
-use super::{Agent, Executor, Stream, Packet, Device, DeviceType, AsyncStream, AgentDevice, Filter};
+use super::{
+    Agent, AgentDevice, AsyncStream, Device, DeviceType, Executor, Filter, Packet, Stream,
+};
 use crate::connection::Connection;
 use crate::utils::timeout::{TimeoutExt, DEFAULT_TIMEOUT};
-use tokio::{io::BufReader, prelude::*, time::{timeout, sleep, Duration}};
-use regex::Regex;
-use std::{future::Future, pin::Pin, task::{Context, Poll}};
 use airnetwork::{AirNetwork, TxPacket};
+use anyhow::{anyhow, Context as _, Result};
 use futures::{pin_mut, ready};
+use regex::Regex;
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
+    time::{sleep, timeout, Duration},
+};
 
 mod airnetwork;
 
@@ -35,10 +44,7 @@ where
 {
     type Item = Result<Packet>;
 
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
             let p = {
                 let fut = self.c.read();
@@ -51,9 +57,9 @@ where
             };
             if let Some(true) = self.filter.as_ref().map(|f| f(&pkt)) {
                 // drop
-                continue
+                continue;
             }
-            return Poll::Ready(Some(Ok(pkt)))
+            return Poll::Ready(Some(Ok(pkt)));
         }
     }
 }
@@ -77,12 +83,19 @@ where
 
     async fn send(&mut self, packet: Packet) -> Result<()> {
         let pkt_len = packet.data.len();
-        let written = self.c.write(TxPacket {
-            data: packet.data,
-            ..Default::default()
-        }).await?;
-        if (written != pkt_len) {
-            log::warn!("send it not successed, sent: {}, packet: {}", written, pkt_len);
+        let written = self
+            .c
+            .write(TxPacket {
+                data: packet.data,
+                ..Default::default()
+            })
+            .await?;
+        if written != pkt_len {
+            log::warn!(
+                "send it not successed, sent: {}, packet: {}",
+                written,
+                pkt_len
+            );
         }
         Ok(())
     }
@@ -101,12 +114,11 @@ pub struct LinuxAgent<F> {
     factory: F,
 }
 
-impl<F> LinuxAgent<F>
-{
+impl<F> LinuxAgent<F> {
     pub async fn new<Fut>(factory: F) -> Result<LinuxAgent<F>>
     where
         F: Fn() -> Fut + Send + Sync,
-        Fut: Future<Output=Result<Connection>> + Send + 'static
+        Fut: Future<Output = Result<Connection>> + Send + 'static,
     {
         Ok(LinuxAgent {
             conn: LinuxExecutor::from_factory(&factory).await?,
@@ -117,12 +129,18 @@ impl<F> LinuxAgent<F>
     async fn command_match(&mut self, command: &str, re: &str) -> Result<String> {
         let output = self.conn.exec(command).await?;
         match Regex::new(re)?.captures(&output) {
-            Some(output) => {
-                Ok(output.get(1).expect("Make sure there is a group in your RE").as_str().to_owned())
-            }
+            Some(output) => Ok(output
+                .get(1)
+                .expect("Make sure there is a group in your RE")
+                .as_str()
+                .to_owned()),
             None => {
                 log::debug!("cmd: {:?}\noutput: {:?}", command, output);
-                Err(anyhow!("The output of command: {} is not matched with regex: {}", command, re))
+                Err(anyhow!(
+                    "The output of command: {} is not matched with regex: {}",
+                    command,
+                    re
+                ))
             }
         }
     }
@@ -132,13 +150,20 @@ impl<F> LinuxAgent<F>
 impl<F, Fut> Agent for LinuxAgent<F>
 where
     F: Fn() -> Fut + Send + Sync,
-    Fut: Future<Output=Result<Connection>> + Send + 'static
+    Fut: Future<Output = Result<Connection>> + Send + 'static,
 {
     async fn check(&mut self) -> Result<()> {
         log::trace!("check");
         // let iw_version = self.command_match("iw --version", r"^(iw version .*)\n$").await?;
-        let airserv_version = self.command_match("airserv-ng", r"(Airserv-ng\s+.*?)-").await?;
-        let nc_version = self.command_match("nc -h 2>&1", r"((OpenBSD netcat.*)|(GNU netcat .*)|(BusyBox.*))\n").await?;
+        let airserv_version = self
+            .command_match("airserv-ng", r"(Airserv-ng\s+.*?)-")
+            .await?;
+        let nc_version = self
+            .command_match(
+                "nc -h 2>&1",
+                r"((OpenBSD netcat.*)|(GNU netcat .*)|(BusyBox.*))\n",
+            )
+            .await?;
         log::debug!("version check passed:\n{}\n{}", airserv_version, nc_version);
 
         let mut stream = LinuxExecutor::from_factory(&self.factory)
@@ -149,8 +174,10 @@ where
         let mut buf = String::new();
         timeout(DEFAULT_TIMEOUT, stream.read_to_string(&mut buf))
             .await
-            .context(anyhow!("Seems that your terminal doesn't exit when inner process exit. {}",
-                "please check your after_connected script."))??;
+            .context(anyhow!(
+                "Seems that your terminal doesn't exit when inner process exit. {}",
+                "please check your after_connected script."
+            ))??;
 
         Ok(())
     }
@@ -196,9 +223,7 @@ where
 
         tokio::spawn(async move {
             let cmd = format!("airserv-ng -p 16666 -d {} -v 1 2>&1", device_name);
-            let serv_stream = serv.exec_stream(
-                cmd.as_bytes()
-            ).await?;
+            let serv_stream = serv.exec_stream(cmd.as_bytes()).await?;
             let mut s = BufReader::new(serv_stream);
             loop {
                 let mut line = String::new();
@@ -230,7 +255,7 @@ impl LinuxExecutor {
     pub async fn from_factory<F, Fut>(factory: &F) -> Result<LinuxExecutor>
     where
         F: Fn() -> Fut,
-        Fut: Future<Output=Result<Connection>>
+        Fut: Future<Output = Result<Connection>>,
     {
         Ok(Self::new(factory().await?))
     }
@@ -258,8 +283,15 @@ impl Executor for LinuxExecutor {
         self.0.flush().await?;
 
         self.assert_line("---start---").await?;
-        let result = self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"---end---\n"[..]).await?;
-        let retcode = String::from_utf8(self.0.read_until_timeout(DEFAULT_TIMEOUT, &b"\n"[..]).await?)?;
+        let result = self
+            .0
+            .read_until_timeout(DEFAULT_TIMEOUT, &b"---end---\n"[..])
+            .await?;
+        let retcode = String::from_utf8(
+            self.0
+                .read_until_timeout(DEFAULT_TIMEOUT, &b"\n"[..])
+                .await?,
+        )?;
         let retcode = retcode.trim().parse::<u8>()?;
         if retcode != 0 {
             // TODO: return retcode in some way
@@ -269,7 +301,10 @@ impl Executor for LinuxExecutor {
         Ok(result)
     }
 
-    async fn exec_stream(mut self, command: &[u8]) -> Result<Box<dyn AsyncStream + Unpin + Send + 'static>> {
+    async fn exec_stream(
+        mut self,
+        command: &[u8],
+    ) -> Result<Box<dyn AsyncStream + Unpin + Send + 'static>> {
         self.0.write_all("echo '---start---'\n".as_bytes()).await?;
         self.0.flush().await?;
         self.assert_line("---start---").await?;
