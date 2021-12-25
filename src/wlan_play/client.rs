@@ -1,13 +1,20 @@
-use anyhow::{anyhow, Result};
-use crate::config::{Config, Mode, ClientOpt};
-use crate::agent::{self, Device, DeviceType, BoxAgentDevice, Packet};
-use crate::utils::ieee80211::{self, Frame, FrameType, Mac};
-use deku::prelude::*;
-use tokio::{time::{timeout, Duration}, net::UdpSocket};
-use std::{collections::{HashMap, HashSet}, net::SocketAddr, path::PathBuf};
 use super::protocol;
-use tokio::select;
+use crate::agent::{self, BoxAgentDevice, Device, DeviceType, Packet};
+use crate::config::{ClientOpt, Config, Mode};
+use crate::utils::ieee80211::{self, Frame, FrameType, Mac};
+use anyhow::{anyhow, Result};
+use deku::prelude::*;
 use futures::stream::TryStreamExt;
+use std::{
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
+    path::PathBuf,
+};
+use tokio::select;
+use tokio::{
+    net::UdpSocket,
+    time::{timeout, Duration},
+};
 
 fn parse_ieee80211(data: &[u8]) -> Result<(ieee80211::Frame, &[u8])> {
     let ((body, _), frame) = match Frame::from_bytes((data, 0)) {
@@ -39,10 +46,7 @@ impl WlanPlay {
         };
         let mut agent = agent::from_config(&config.agent).await?;
         let dev = agent.get_device(&d).await?;
-        Ok(WlanPlay {
-            dev,
-            _pcap: pcap,
-        })
+        Ok(WlanPlay { dev, _pcap: pcap })
     }
     pub async fn find_switch(&mut self) -> Result<HashMap<Mac, Station>> {
         let list = [1u32, 6, 11];
@@ -53,56 +57,67 @@ impl WlanPlay {
             let mut count = 0;
             match timeout(
                 Duration::from_millis(300),
-                self.find_switch_packet(&mut set, &mut count)).await
+                self.find_switch_packet(&mut set, &mut count),
+            )
+            .await
             {
                 Ok(f) => f?,
                 Err(_) => {
                     log::trace!("Channel {} stop, packets: {}", i, count);
-                },
+                }
             };
         }
         Ok(set)
     }
-    async fn find_switch_packet(&mut self, set: &mut HashMap<Mac, Station>, count: &mut u32) -> Result<()> {
+    async fn find_switch_packet(
+        &mut self,
+        set: &mut HashMap<Mac, Station>,
+        count: &mut u32,
+    ) -> Result<()> {
         while let Some(p) = self.dev.try_next().await? {
             *count += 1;
             let (frame, _) = parse_ieee80211(&p.data)?;
             // Nintendo action frame
             if get_action_ssid(&p.data).is_some() {
                 let addr = frame.addr2.unwrap();
-                set.insert(addr.clone(), Station {
-                    channel: p.channel,
-                    mac: addr
-                });
+                set.insert(
+                    addr.clone(),
+                    Station {
+                        channel: p.channel,
+                        mac: addr,
+                    },
+                );
             }
         }
         Ok(())
     }
     async fn set_station(&mut self, station: Station) -> Result<()> {
         self.dev.set_channel(station.channel).await?;
-        self.dev.set_filter(Some(Box::new(move |p| {
-            let (frame, _) = match parse_ieee80211(&p.data) {
-                Ok(r) => r,
-                Err(_) => return true,
-            };
-            if packet_has_mac(&frame, &station.mac) {
-                return false
-            }
-            true
-        }))).await?;
+        self.dev
+            .set_filter(Some(Box::new(move |p| {
+                let (frame, _) = match parse_ieee80211(&p.data) {
+                    Ok(r) => r,
+                    Err(_) => return true,
+                };
+                if packet_has_mac(&frame, &station.mac) {
+                    return false;
+                }
+                true
+            })))
+            .await?;
         Ok(())
     }
 }
 
 fn packet_has_mac(frame: &ieee80211::Frame, mac: &Mac) -> bool {
     if mac == &frame.addr1 {
-        return true
+        return true;
     }
     if let Some(true) = frame.addr2.as_ref().map(|k| mac == k) {
-        return true
+        return true;
     }
     if let Some(true) = frame.addr3.as_ref().map(|k| mac == k) {
-        return true
+        return true;
     }
     return false;
 }
@@ -115,9 +130,7 @@ impl Client {
     async fn connect(addr: SocketAddr) -> Result<Client> {
         let s = UdpSocket::bind("0.0.0.0:0").await?;
         s.connect(addr).await?;
-        Ok(Client {
-            s,
-        })
+        Ok(Client { s })
     }
     async fn recv(&self) -> Result<protocol::FrameBody> {
         let mut buf = [0u8; 2048];
@@ -136,7 +149,10 @@ impl Client {
 
 fn get_action_ssid(data: &[u8]) -> Option<String> {
     let (frame, rest) = parse_ieee80211(data).ok()?;
-    let (frame_type, sub_type) = (&frame.frame_control.frame_type, &frame.frame_control.sub_type);
+    let (frame_type, sub_type) = (
+        &frame.frame_control.frame_type,
+        &frame.frame_control.sub_type,
+    );
     match (frame_type, sub_type) {
         (FrameType::Management, 13) => {
             // Nintendo action frame
@@ -154,7 +170,10 @@ fn get_action_ssid(data: &[u8]) -> Option<String> {
 
 fn get_probe_ssid(data: &[u8]) -> Option<String> {
     let (frame, rest) = parse_ieee80211(data).ok()?;
-    let (frame_type, sub_type) = (&frame.frame_control.frame_type, &frame.frame_control.sub_type);
+    let (frame_type, sub_type) = (
+        &frame.frame_control.frame_type,
+        &frame.frame_control.sub_type,
+    );
     match (frame_type, sub_type) {
         // Probe request
         (FrameType::Management, 4) => {
@@ -173,7 +192,7 @@ async fn host_main(client: Client, mut wlan_play: WlanPlay) -> Result<()> {
     let ns = loop {
         let ns = wlan_play.find_switch().await?;
         if ns.len() > 0 {
-            break ns
+            break ns;
         }
     };
     log::info!("Found NS: {:#?}", ns);
@@ -254,8 +273,8 @@ async fn station_main(client: Client, mut wlan_play: WlanPlay) -> Result<()> {
 }
 
 pub async fn main(opt: ClientOpt) -> Result<()> {
-    use toml::from_slice;
     use tokio::fs::read;
+    use toml::from_slice;
 
     let config: Config = from_slice(&read(opt.cfg).await?)?;
     let wlan_play = WlanPlay::new(&config, opt.pcap).await?;
@@ -264,7 +283,7 @@ pub async fn main(opt: ClientOpt) -> Result<()> {
     match config.mode {
         Mode::Host => {
             host_main(client, wlan_play).await?;
-        },
+        }
         Mode::Station => {
             station_main(client, wlan_play).await?;
         }
@@ -280,23 +299,30 @@ mod tests {
     #[test]
     fn test_get_action_ssid() {
         let data = [
-            0xD0u8, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x04, 0x03, 0xD6, 0x28, 0xA3, 0xAC,
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x40, 0x2E, 0x7F, 0x00, 0x22, 0xAA, 0x04, 0x00, 0x01, 0x01,
-            0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x01,
-            0x00, 0x00, 0x00, 0x00, 0x29, 0xA6, 0x4B, 0x95, 0x8B, 0x63, 0xD3, 0xE6, 0x7E, 0x83, 0x84, 0x88,
-            0x3F, 0x02, 0x4F, 0x76
+            0xD0u8, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x04, 0x03, 0xD6, 0x28,
+            0xA3, 0xAC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x40, 0x2E, 0x7F, 0x00, 0x22, 0xAA,
+            0x04, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x10, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x29, 0xA6, 0x4B, 0x95,
+            0x8B, 0x63, 0xD3, 0xE6, 0x7E, 0x83, 0x84, 0x88, 0x3F, 0x02, 0x4F, 0x76,
         ];
-        assert_eq!(get_action_ssid(&data).unwrap(), "29a64b958b63d3e67e8384883f024f76");
+        assert_eq!(
+            get_action_ssid(&data).unwrap(),
+            "29a64b958b63d3e67e8384883f024f76"
+        );
     }
 
     #[test]
     fn test_get_probe_ssid() {
         let data = [
-            0x40u8, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x98, 0x41, 0x5C, 0xDC, 0x22, 0xEC,
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0x03, 0x00, 0x20, 0x32, 0x39, 0x61, 0x36, 0x34, 0x62,
-            0x39, 0x35, 0x38, 0x62, 0x36, 0x33, 0x64, 0x33, 0x65, 0x36, 0x37, 0x65, 0x38, 0x33, 0x38, 0x34,
-            0x38, 0x38, 0x33, 0x66, 0x30, 0x32, 0x34, 0x66, 0x37, 0x36
+            0x40u8, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x98, 0x41, 0x5C, 0xDC,
+            0x22, 0xEC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0x03, 0x00, 0x20, 0x32, 0x39,
+            0x61, 0x36, 0x34, 0x62, 0x39, 0x35, 0x38, 0x62, 0x36, 0x33, 0x64, 0x33, 0x65, 0x36,
+            0x37, 0x65, 0x38, 0x33, 0x38, 0x34, 0x38, 0x38, 0x33, 0x66, 0x30, 0x32, 0x34, 0x66,
+            0x37, 0x36,
         ];
-        assert_eq!(get_probe_ssid(&data).unwrap(), "29a64b958b63d3e67e8384883f024f76");
+        assert_eq!(
+            get_probe_ssid(&data).unwrap(),
+            "29a64b958b63d3e67e8384883f024f76"
+        );
     }
 }

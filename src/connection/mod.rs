@@ -1,14 +1,14 @@
-use anyhow::{Result, anyhow};
-pub use url::Url;
+use anyhow::{anyhow, Result};
+pub use command::CommandConnection;
 pub use script::run_script;
 use serde_derive::Deserialize;
-pub use tokio::io::{AsyncRead, AsyncBufRead, AsyncWrite, BufStream};
-pub use command::CommandConnection;
+pub use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, BufStream};
+pub use url::Url;
 
 mod command;
+mod script;
 #[cfg(feature = "ssh")]
 mod ssh;
-mod script;
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -21,25 +21,18 @@ pub enum ConnectionMethod {
 pub struct ConnectionConfig {
     #[serde(flatten)]
     pub method: ConnectionMethod,
-    
+
     /// rhai script will be run after connected
     pub after_connected: Option<String>,
 }
 
-
 pub async fn connect(config: ConnectionConfig) -> Result<Connection> {
     let stream: BoxAsyncStream = match config.method {
-        ConnectionMethod::Url { url } => {
-            match url.scheme() {
-                #[cfg(feature = "ssh")]
-                "ssh" => {
-                    Box::new(ssh::SshConnection::new(&url).await?)
-                }
-                _ => {
-                    Err(anyhow!("{} not support!", url.scheme()))?
-                }
-            }
-        }
+        ConnectionMethod::Url { url } => match url.scheme() {
+            #[cfg(feature = "ssh")]
+            "ssh" => Box::new(ssh::SshConnection::new(&url).await?),
+            _ => Err(anyhow!("{} not support!", url.scheme()))?,
+        },
         ConnectionMethod::Command { command } => {
             let (_, args) = command.split_at(1);
             Box::new(CommandConnection::new((&command[0], args)).await?)
@@ -55,8 +48,7 @@ pub async fn connect(config: ConnectionConfig) -> Result<Connection> {
     Ok(conn)
 }
 
-pub trait AsyncStream: AsyncRead + AsyncWrite {
-}
+pub trait AsyncStream: AsyncRead + AsyncWrite {}
 
 pub type BoxAsyncStream = Box<dyn AsyncStream + Send + Sync + Unpin>;
 

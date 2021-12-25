@@ -231,9 +231,9 @@ where
                 if line.len() == 0 {
                     break;
                 }
-                log::trace!("serv log {}", line.trim_end());
+                log::trace!("airserv-ng: {}", line.trim_end());
             }
-            log::error!("serv exited");
+            log::error!("airserv-ng exited");
             Ok::<(), anyhow::Error>(())
         });
 

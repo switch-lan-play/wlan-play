@@ -1,10 +1,15 @@
+use super::{AsyncRead, AsyncWrite, Url};
 use anyhow::{anyhow, Result};
-use tokio::io::ReadBuf;
-use super::{Url, AsyncRead, AsyncWrite};
+use futures::{pin_mut, ready, Future};
+use std::{
+    io,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 use thrussh::{client, ChannelMsg};
 use thrussh_keys::key;
-use std::{sync::Arc, pin::Pin, task::{Context, Poll}, io};
-use futures::{Future, ready, pin_mut};
+use tokio::io::ReadBuf;
 
 pub struct SshConnection {
     _handle: client::Handle,
@@ -27,12 +32,15 @@ impl SshConnection {
             Err(anyhow!("Command is empty"))?;
         }
         let cmd = &url.path()[1..];
-        let mut handle  = client::connect(config, addr, Handler).await?;
+        let mut handle = client::connect(config, addr, Handler).await?;
 
-        if !handle.authenticate_password(
-            url.username(),
-            url.password().ok_or(anyhow!("Password is empty"))?,
-        ).await? {
+        if !handle
+            .authenticate_password(
+                url.username(),
+                url.password().ok_or(anyhow!("Password is empty"))?,
+            )
+            .await?
+        {
             Err(anyhow!("Failed to login with {}", url.username()))?;
         }
 
@@ -42,7 +50,7 @@ impl SshConnection {
             log::debug!("exec {:?}", msg);
             if let ChannelMsg::Success = msg {
                 log::info!("Get shell");
-                break
+                break;
             }
         }
 
@@ -55,7 +63,11 @@ impl SshConnection {
 }
 
 impl AsyncRead for SshConnection {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
         loop {
             let t = self.read_buf.take();
             self.read_buf = match t {
@@ -63,20 +75,20 @@ impl AsyncRead for SshConnection {
                     let new_b = b.split_off(buf.remaining().min(b.len()));
                     buf.put_slice(&b);
                     self.read_buf = Some(new_b);
-                    return Poll::Ready(Ok(()))
-                },
+                    return Poll::Ready(Ok(()));
+                }
                 None => {
                     let fut = self.channel.wait();
                     pin_mut!(fut);
                     match ready!(fut.poll(cx)) {
-                        Some(ChannelMsg::Data{ data }) => {
+                        Some(ChannelMsg::Data { data }) => {
                             let mut dat = Vec::with_capacity(data.len());
                             data.write_all_from(0, &mut dat).unwrap();
                             Some(dat)
                         }
-                        _ => return Poll::Ready(Err(io::ErrorKind::InvalidData.into()))
+                        _ => return Poll::Ready(Err(io::ErrorKind::InvalidData.into())),
                     }
-                },
+                }
             }
         }
     }
@@ -91,9 +103,9 @@ impl AsyncWrite for SshConnection {
         let fut = self.channel.data(buf);
         pin_mut!(fut);
         let r = ready!(fut.poll(cx));
-        Poll::Ready(r
-            .map(|_| buf.len())
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        Poll::Ready(
+            r.map(|_| buf.len())
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e)),
         )
     }
 
@@ -110,7 +122,7 @@ struct Handler;
 impl client::Handler for Handler {
     type FutureUnit = futures::future::Ready<Result<(Self, client::Session), anyhow::Error>>;
     type FutureBool = futures::future::Ready<Result<(Self, bool), anyhow::Error>>;
- 
+
     fn finished_bool(self, b: bool) -> Self::FutureBool {
         futures::future::ready(Ok((self, b)))
     }

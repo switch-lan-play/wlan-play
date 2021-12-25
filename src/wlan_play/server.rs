@@ -1,10 +1,10 @@
-use anyhow::Result;
+use super::protocol::{Frame, FrameBody};
 use crate::config::ServerOpt;
-use tokio::net::UdpSocket;
+use anyhow::Result;
+use deku::prelude::*;
 use std::collections::HashSet;
 use std::net::SocketAddr;
-use super::protocol::{FrameBody, Frame};
-use deku::prelude::*;
+use tokio::net::UdpSocket;
 
 pub async fn main(opt: ServerOpt) -> Result<()> {
     let socket = UdpSocket::bind(("0.0.0.0", opt.port)).await?;
@@ -20,11 +20,11 @@ pub async fn main(opt: ServerOpt) -> Result<()> {
             Err(e) => {
                 log::error!("{:?} {:02x?}", e, buf);
                 continue;
-            },
+            }
         };
         let broadcast = match frame.body {
             FrameBody::Keepalive => (false),
-            FrameBody::Data{..} => (true),
+            FrameBody::Data { .. } => (true),
         };
         if broadcast {
             for a in &addrs {

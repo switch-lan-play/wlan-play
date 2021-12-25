@@ -1,10 +1,10 @@
-use pcap_parser::*;
-use pcap_parser::traits::PcapReaderIterator;
-use std::{fs::File, io::Write};
-use structopt::StructOpt;
-use std::path::PathBuf;
 use anyhow::Result;
 use crc::crc32::checksum_ieee;
+use pcap_parser::traits::PcapReaderIterator;
+use pcap_parser::*;
+use std::path::PathBuf;
+use std::{fs::File, io::Write};
+use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 #[structopt(about = "A tool to convert UDP pcap to 802.11 pcap")]
@@ -33,11 +33,26 @@ fn main() -> Result<()> {
                         writer.write_all(&header.to_vec()?)?;
                         println!("{:?}", header);
                     }
-                    PcapBlockOwned::Legacy(LegacyPcapBlock { data, ts_sec, ts_usec, caplen, origlen  }) => {
+                    PcapBlockOwned::Legacy(LegacyPcapBlock {
+                        data,
+                        ts_sec,
+                        ts_usec,
+                        caplen,
+                        origlen,
+                    }) => {
                         const OFFSET: usize = 0x31;
                         let data = &data[OFFSET..];
                         let fcs = checksum_ieee(data);
-                        let data = &[data, &[fcs as u8, (fcs >> 8) as u8, (fcs >> 16) as u8, (fcs >> 24) as u8]].concat();
+                        let data = &[
+                            data,
+                            &[
+                                fcs as u8,
+                                (fcs >> 8) as u8,
+                                (fcs >> 16) as u8,
+                                (fcs >> 24) as u8,
+                            ],
+                        ]
+                        .concat();
                         let mut block = LegacyPcapBlock {
                             data,
                             ts_sec,
@@ -51,14 +66,14 @@ fn main() -> Result<()> {
                 };
                 num_blocks += 1;
                 reader.consume(offset);
-            },
+            }
             Err(PcapError::Eof) => break,
             Err(PcapError::Incomplete) => {
                 reader.refill().unwrap();
-            },
+            }
             Err(e) => panic!("error while reading: {:?}", e),
         }
-    };
+    }
     println!("num_blocks: {}", num_blocks);
     Ok(())
 }

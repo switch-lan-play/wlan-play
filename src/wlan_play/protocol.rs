@@ -29,7 +29,7 @@ impl Into<Frame> for FrameBody {
     fn into(self) -> Frame {
         let (frame_type, len) = match &self {
             FrameBody::Keepalive => (0u8, 0),
-            FrameBody::Data{ data, channel } => (1, (data.len() + size_of_val(channel)) as u16),
+            FrameBody::Data { data, channel } => (1, (data.len() + size_of_val(channel)) as u16),
         };
         Frame {
             version: 0,

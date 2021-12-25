@@ -1,8 +1,8 @@
-use serde_derive::Deserialize;
 use crate::agent::AgentConfig;
-use structopt::StructOpt;
+use serde_derive::Deserialize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use structopt::StructOpt;
 
 #[derive(Deserialize, Debug)]
 pub enum Mode {

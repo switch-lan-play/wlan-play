@@ -1,10 +1,13 @@
 use anyhow::{Context, Result};
-pub use tokio::{io::{self, AsyncRead, AsyncReadExt, AsyncBufRead, AsyncBufReadExt, AsyncWrite}, time::{timeout, Duration}};
+pub use tokio::{
+    io::{self, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite},
+    time::{timeout, Duration},
+};
 
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[async_trait::async_trait]
-pub trait TimeoutExt : AsyncBufRead + Unpin + Send {
+pub trait TimeoutExt: AsyncBufRead + Unpin + Send {
     async fn read_line_timeout(&mut self, duration: Duration) -> Result<String> {
         let mut buf = String::new();
         timeout(duration, self.read_line(&mut buf))

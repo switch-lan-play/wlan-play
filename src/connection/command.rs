@@ -1,8 +1,12 @@
 use anyhow::Result;
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use std::process::Stdio;
+use std::{
+    io,
+    pin::Pin,
+    task::{Context, Poll},
+};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use std::{ pin::Pin, task::{Context, Poll}, io};
+use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
 pub struct CommandConnection {
     child: Child,
@@ -18,9 +22,7 @@ impl CommandConnection {
             .stderr(Stdio::null())
             .spawn()?;
 
-        Ok(CommandConnection{
-            child,
-        })
+        Ok(CommandConnection { child })
     }
     fn stdin(&mut self) -> &mut ChildStdin {
         self.child.stdin.as_mut().unwrap()
@@ -31,13 +33,21 @@ impl CommandConnection {
 }
 
 impl AsyncRead for CommandConnection {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
         Pin::new(self.stdout()).poll_read(cx, buf)
     }
 }
 
 impl AsyncWrite for CommandConnection {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, io::Error>> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
         Pin::new(self.stdin()).poll_write(cx, buf)
     }
 
@@ -45,7 +55,10 @@ impl AsyncWrite for CommandConnection {
         Pin::new(self.stdin()).poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
         Pin::new(self.stdin()).poll_shutdown(cx)
     }
 }

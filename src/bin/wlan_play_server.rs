@@ -1,7 +1,7 @@
 use anyhow::Result;
-use wlan_play::config::ServerOpt;
-use structopt::StructOpt;
 use env_logger::Env;
+use structopt::StructOpt;
+use wlan_play::config::ServerOpt;
 use wlan_play::server::main as server_main;
 
 #[tokio::main]
