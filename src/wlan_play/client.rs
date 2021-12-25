@@ -119,7 +119,7 @@ fn packet_has_mac(frame: &ieee80211::Frame, mac: &Mac) -> bool {
     if let Some(true) = frame.addr3.as_ref().map(|k| mac == k) {
         return true;
     }
-    return false;
+    false
 }
 
 struct Client {
@@ -153,18 +153,16 @@ fn get_action_ssid(data: &[u8]) -> Option<String> {
         &frame.frame_control.frame_type,
         &frame.frame_control.sub_type,
     );
-    match (frame_type, sub_type) {
-        (FrameType::Management, 13) => {
-            // Nintendo action frame
-            if rest[0] == 0x7f
-                && rest[1..4] == [0x00, 0x22, 0xaa]
-                && rest[4..12] == [0x04, 0x00, 0x01, 0x01, 0, 0, 0, 0]
-            {
-                return Some(hex::encode(&rest[28..28 + 0x10]));
-            }
+
+    if let (FrameType::Management, 13) = (frame_type, sub_type) {
+        // Nintendo action frame
+        if rest[0] == 0x7f
+            && rest[1..4] == [0x00, 0x22, 0xaa]
+            && rest[4..12] == [0x04, 0x00, 0x01, 0x01, 0, 0, 0, 0]
+        {
+            return Some(hex::encode(&rest[28..28 + 0x10]));
         }
-        _ => {}
-    };
+    }
     None
 }
 
@@ -174,16 +172,14 @@ fn get_probe_ssid(data: &[u8]) -> Option<String> {
         &frame.frame_control.frame_type,
         &frame.frame_control.sub_type,
     );
-    match (frame_type, sub_type) {
-        // Probe request
-        (FrameType::Management, 4) => {
-            // SSID
-            if rest[0..2] == [0x00, 0x20] {
-                return Some(String::from_utf8_lossy(&rest[2..2 + 0x20]).to_string());
-            }
+
+    // Probe request
+    if let (FrameType::Management, 4) = (frame_type, sub_type) {
+        // SSID
+        if rest[0..2] == [0x00, 0x20] {
+            return Some(String::from_utf8_lossy(&rest[2..2 + 0x20]).to_string());
         }
-        _ => {}
-    };
+    }
     None
 }
 
@@ -191,7 +187,7 @@ async fn host_main(client: Client, mut wlan_play: WlanPlay) -> Result<()> {
     use protocol::FrameBody;
     let ns = loop {
         let ns = wlan_play.find_switch().await?;
-        if ns.len() > 0 {
+        if !ns.is_empty() {
             break ns;
         }
     };

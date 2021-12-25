@@ -31,7 +31,7 @@ pub async fn connect(config: ConnectionConfig) -> Result<Connection> {
         ConnectionMethod::Url { url } => match url.scheme() {
             #[cfg(feature = "ssh")]
             "ssh" => Box::new(ssh::SshConnection::new(&url).await?),
-            _ => Err(anyhow!("{} not support!", url.scheme()))?,
+            _ => return Err(anyhow!("{} not support!", url.scheme())),
         },
         ConnectionMethod::Command { command } => {
             let (_, args) = command.split_at(1);

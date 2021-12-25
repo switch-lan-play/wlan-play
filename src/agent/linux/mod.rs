@@ -228,7 +228,7 @@ where
             loop {
                 let mut line = String::new();
                 s.read_line(&mut line).await?;
-                if line.len() == 0 {
+                if line.is_empty() {
                     break;
                 }
                 log::trace!("airserv-ng: {}", line.trim_end());
@@ -265,7 +265,7 @@ impl LinuxExecutor {
         Ok(s)
     }
     async fn assert_line(&mut self, expect: &str) -> Result<()> {
-        if expect != &self.read_line().await? {
+        if expect != self.read_line().await? {
             return Err(anyhow!("Failed to assert_line"));
         }
 

@@ -68,7 +68,7 @@ where
         loop {
             let p = match self.get().await? {
                 NetCmd::Packet(p) => p,
-                p @ _ => return Ok(p),
+                p => return Ok(p),
             };
             self.queue.push_back(p);
         }
@@ -194,9 +194,9 @@ mod protocol {
         SetRate(u32),
     }
 
-    impl Into<NetCmdFrame> for NetCmd {
-        fn into(self) -> NetCmdFrame {
-            let (cmd, len) = match &self {
+    impl From<NetCmd> for NetCmdFrame {
+        fn from(net_cmd: NetCmd) -> NetCmdFrame {
+            let (cmd, len) = match &net_cmd {
                 NetCmd::Rc(_) => (1, 4),
                 NetCmd::GetChan => (2, 0),
                 NetCmd::SetChan(_) => (3, 4),
@@ -215,7 +215,7 @@ mod protocol {
             NetCmdFrame {
                 cmd,
                 len,
-                body: self,
+                body: net_cmd,
             }
         }
     }

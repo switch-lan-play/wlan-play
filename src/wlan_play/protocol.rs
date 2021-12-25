@@ -25,9 +25,9 @@ pub enum FrameBody {
     },
 }
 
-impl Into<Frame> for FrameBody {
-    fn into(self) -> Frame {
-        let (frame_type, len) = match &self {
+impl From<FrameBody> for Frame {
+    fn from(body: FrameBody) -> Frame {
+        let (frame_type, len) = match &body {
             FrameBody::Keepalive => (0u8, 0),
             FrameBody::Data { data, channel } => (1, (data.len() + size_of_val(channel)) as u16),
         };
@@ -35,7 +35,7 @@ impl Into<Frame> for FrameBody {
             version: 0,
             frame_type,
             len,
-            body: self,
+            body,
         }
     }
 }
