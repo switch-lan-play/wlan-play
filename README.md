@@ -1,3 +1,10 @@
+# wlan-play
+
+A command line tool to play Nintendo Switch games locally remotely.
+
+## Example config
+
+```toml
 # the wireless interface name, should be monitor mode
 device = "wlan1mon"
 # "Host" or "Station"
@@ -21,3 +28,4 @@ if id != "root\\n" {
     throw "not root";
 }
 """
+```
