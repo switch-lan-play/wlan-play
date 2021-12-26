@@ -99,7 +99,7 @@ impl WlanPlay {
                     Ok(r) => r,
                     Err(_) => return true,
                 };
-                if packet_has_mac(&frame, &station.mac) {
+                if is_ack(&frame) || packet_has_mac(&frame, &station.mac) {
                     return false;
                 }
                 true
@@ -144,6 +144,18 @@ impl Client {
         let bytes = frame.to_bytes()?;
         self.s.send(&bytes).await?;
         Ok(())
+    }
+}
+
+fn is_ack(frame: &ieee80211::Frame) -> bool {
+    let (frame_type, sub_type) = (
+        &frame.frame_control.frame_type,
+        &frame.frame_control.sub_type,
+    );
+    if let (FrameType::Control, 13) = (frame_type, sub_type) {
+        true
+    } else {
+        false
     }
 }
 
@@ -254,12 +266,18 @@ async fn station_main(client: Client, mut wlan_play: WlanPlay) -> Result<()> {
                 if let Some(true) = get_probe_ssid(&p.data).map(|ssid| ssids.contains(&ssid)) {
                     stations.insert(frame.addr2.as_ref().unwrap().clone());
                 }
-                if let Some(true) = frame.addr2.as_ref().map(|src| stations.contains(src)) {
-                    client.send(protocol::FrameBody::Data {
+                if is_ack(&frame) || stations.iter().any(|k| packet_has_mac(&frame, k)) {
+                    client.send(FrameBody::Data {
                         channel: p.channel,
                         data: p.data,
                     }).await?;
                 }
+                // if let Some(true) = frame.addr2.as_ref().map(|src| stations.contains(src)) {
+                //     client.send(protocol::FrameBody::Data {
+                //         channel: p.channel,
+                //         data: p.data,
+                //     }).await?;
+                // }
             }
         };
     }
@@ -320,5 +338,12 @@ mod tests {
             get_probe_ssid(&data).unwrap(),
             "29a64b958b63d3e67e8384883f024f76"
         );
+    }
+
+    #[test]
+    fn test_is_ack() {
+        let data = [0xD4u8, 0x00, 0x00, 0x00, 0x60, 0x6B, 0xFF, 0x28, 0xFA, 0x83];
+        let (frame, _) = parse_ieee80211(&data).unwrap();
+        assert!(is_ack(&frame),);
     }
 }

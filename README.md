@@ -2,11 +2,27 @@
 
 A command line tool to play Nintendo Switch games locally remotely.
 
+## Usage
+
+```shell
+# 0. make sure wlan-play is installed
+wlan-play --help
+# 1. setup your wireless adapter.
+# 1.1. add a monitor interface, replace the `wlan0` with your wireless adapter name.
+iw dev wlan0 interface add mon0 type monitor
+# 1.2. set the interface down
+ip link set wlan0 down
+# 1.3. set the monitor interface up
+ip link set mon0 up
+# 2. fill the config file with your server and password, then run `wlan-play`.
+wlan-play -c <YOUR_CONFIG_FILE>
+```
+
 ## Example config
 
 ```toml
 # the wireless interface name, should be monitor mode
-device = "wlan1mon"
+device = "mon0"
 # "Host" or "Station"
 mode = "Host"
 # relay server
