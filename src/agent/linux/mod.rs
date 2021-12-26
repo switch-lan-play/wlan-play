@@ -161,7 +161,7 @@ where
         let nc_version = self
             .command_match(
                 "nc -h 2>&1",
-                r"((OpenBSD netcat.*)|(GNU netcat .*)|(BusyBox.*))\n",
+                r"((OpenBSD netcat.*)|(GNU netcat .*)|(BusyBox.*)|(usage: nc.*))\n",
             )
             .await?;
         log::debug!("version check passed:\n{}\n{}", airserv_version, nc_version);
